@@ -1,4 +1,4 @@
-/* UM-PASS Survey Filler 1.2
+/* UM-PASS Survey Filler 1.2.1
  * Works only on the page the user is viewing. Uses native UI events, never
  * touches submit controls or sends requests. Unknown answers remain for review.
  */
@@ -67,8 +67,10 @@
   function ratingGroup(elements, container) {
     const options = [...elements].filter(usable).map(element => ({ element, score: scoreOf(element) }));
     const found = new Set(options.map(option => option.score));
-    if (options.length < 4 || !found.has(4) || !found.has(5) ||
-        found.size < 4 || options.some(option => option.score === null)) return null;
+    // A rating has one control per score. Duplicate scores usually mean a
+    // parent container includes several separate questions.
+    if (options.length < 4 || options.length > 5 || !found.has(4) || !found.has(5) ||
+        found.size !== options.length || options.some(option => option.score === null)) return null;
     return {
       container,
       anchor: options[0].element,
@@ -103,7 +105,9 @@
       '.rating-options, [role="radiogroup"], .v-radio-group, ' +
       '.v-selection-control-group, .v-btn-toggle, .v-input--radio-group, fieldset'
     );
-    for (const container of containers) {
+    // Descendants appear after ancestors in document order. Claim the most
+    // specific groups first so an outer fieldset cannot absorb their controls.
+    for (const container of [...containers].reverse()) {
       if (!isVisible(container)) continue;
       const controls = [...container.querySelectorAll('button, input[type="radio"], [role="radio"]')]
         .filter(element => !seen.has(element));
@@ -227,7 +231,7 @@
     if (config.locationMode === 'off' || type === 'campus') return null;
     const mode = config.locationMode || 'smart';
     let preferred = null;
-    if (type === 'college') preferred = 'cce';
+    if (type === 'college') preferred = mode === 'cce' ? 'cce' : null;
     else if (mode === 'cce' || mode === 'gym') preferred = mode;
     else {
       const source = `${question} ${contextTopic()}`;
@@ -255,7 +259,7 @@
       if (choices.filter(choice => /^(?:[1-5])$/.test(choice.label)).length >= 4) continue;
       const target = locationTarget(type, context, choices, config);
       fields.push({
-        type, target, hasAnswer: () => select.value !== '' && select.selectedIndex > 0,
+        type, target, hasAnswer: () => select.value !== '',
         choose: () => { setNativeValue(select, target.value); return true; }
       });
     }

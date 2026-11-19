@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "UM-PASS Survey Filler",
   "short_name": "UM-PASS Filler",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Fill supported UM-PASS surveys with a randomized 4/5 rating mix and context-aware location options. Review before submitting.",
   "permissions": [
     "activeTab",

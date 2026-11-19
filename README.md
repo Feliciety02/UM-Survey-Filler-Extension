@@ -6,7 +6,7 @@
 
 <p align="center">A minimalist, local-only Chrome and Edge extension that pre-fills supported <a href="https://umpass.umindanao.edu.ph/feedback-form/">UM-PASS</a> surveys and evaluations so you can review them and submit them yourself.</p>
 
-<p align="center"><code>Version 1.2.0</code> &nbsp; <code>Chrome · Edge · Manifest V3</code> &nbsp; <code>Vanilla JavaScript</code> &nbsp; <code>Runs locally</code></p>
+<p align="center"><code>Version 1.2.1</code> &nbsp; <code>Chrome · Edge · Manifest V3</code> &nbsp; <code>Vanilla JavaScript</code> &nbsp; <code>Runs locally</code></p>
 
 <p align="center">
   <a href="#install-or-update"><img src="docs/install-button.svg" width="216" alt="Install guide"></a>
@@ -34,7 +34,7 @@
 
 ## Install or update
 
-1. Extract `UM-PASS-Survey-Filler-v1.2.zip`.
+1. Download or clone this repository (or extract its release ZIP).
 2. Open `chrome://extensions` (`edge://extensions` in Edge), and enable **Developer mode**.
 3. If you previously installed the extension, click **Remove** on the old copy (or replace the contents of the original unpacked folder, then press **Reload**).
 4. Click **Load unpacked** and select the extracted `um-pass-survey-filler` directory containing `manifest.json`.
@@ -48,7 +48,7 @@
 - **Performance Evaluation** (`/feedback-form/evaluation`) list and compatible individual forms.
 - Automatic 4/5 randomized rating mix on detected five-point numeric / label rating scales; never assigns 1, 2, or 3.
 - Skip already selected ratings; use the existing form UI's click events so reactive forms receive changes.
-- **Smart location matching:** choose CCE when a question asks for college and CCE is an available option; favor a laboratory for clearly lab-related venue questions and a gym for clearly sports-related venue questions, only if that option appears. Campus location and uncertain locations are left blank for review. Manual location settings can prefer CCE or Gym, or skip location filling.
+- **Smart location matching:** favor a laboratory for clearly lab-related venue questions and a gym for clearly sports-related venue questions, only if that option appears. College, campus, and uncertain locations are left blank for review. Select **Prefer CCE** to fill a college question with CCE when that option appears; other location settings can prefer Gym or skip location filling.
 - Optional user-authored comment in clearly designated comment fields.
 - **Auto-fill** can fill newly opened forms, but cannot submit them.
 - Quick-access buttons for Survey, Course Delivery, and Performance sections.
@@ -58,3 +58,7 @@
 The supplied HTML for **Survey Form** and **Performance Evaluation** captures listing pages (not individual question forms). Therefore some question types and layouts may not be recognized; this is best-effort, not guaranteed to fill all fields. Locked or completed forms are not changed. No hidden API calls, authentication handling, or automatic submission. The extension does not browse every pending survey on your behalf. Verify campus, building, and venue responses, because the actual location cannot be known from the saved listing pages. Ratings are only a *draft pattern*; change any to reflect your genuine evaluation before submission.
 
 All configuration remains in your browser's extension storage. No separate network requests. Not affiliated with UM.
+
+## Checks
+
+Run `node --test` to check rating grouping and location answer preservation. The tests use Node's built-in test runner and need no packages.
