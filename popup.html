@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>UM-PASS Survey Filler</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <img class="logo" src="icons/icon-48.png" width="39" height="39" alt="" aria-hidden="true">
+      <div class="header-copy"><div class="eyebrow">UM-PASS</div><h1>Survey Filler</h1></div>
+      <span class="version">v1.2</span>
+    </header>
+    <section class="status" aria-live="polite">
+      <span id="status-indicator" class="status-dot"></span>
+      <div><strong id="status-title">Checking page…</strong><p id="status-info">Looking for survey questions</p></div>
+    </section>
+    <main>
+      <div class="section-heading"><label>Rating pattern</label><span class="small-muted">Balanced random mix</span></div>
+      <div class="pattern" aria-label="Only ratings 4 and 5"><span class="pale">5</span><span>4</span><span>5</span><span class="pale">4</span><span>5</span><span class="pattern-caption">Shuffle each form</span></div>
+      <p class="hint">Only 4s and 5s · randomized order, without long repeated streaks.</p>
+      <div class="setting"><div><label for="auto-fill">Auto-fill new forms</label><p>Fill compatible questions when a form opens.</p></div>
+        <label class="switch"><input id="auto-fill" type="checkbox" aria-label="Auto-fill new forms"><span class="switch-track"></span></label>
+      </div>
+      <div class="setting compact"><div><label for="location-mode">Location handling</label><p>Match college or venue to the question.</p></div>
+        <select id="location-mode" aria-label="Location handling">
+          <option value="smart">Smart</option><option value="off">Skip</option><option value="cce">Prefer CCE</option><option value="gym">Prefer Gym</option>
+        </select>
+      </div>
+      <details class="details"><summary>Optional comment <span aria-hidden="true">+</span></summary>
+        <textarea id="comment" rows="3" maxlength="350" placeholder="Your own comment or suggestion…"></textarea>
+        <p>Used only in clearly labeled comment fields.</p>
+      </details>
+      <button id="fill" class="primary" type="button">Fill unanswered questions <span aria-hidden="true">→</span></button>
+      <p class="result" id="result" aria-live="polite"></p>
+      <div class="jump-label">Quick access</div>
+      <nav class="links" aria-label="UM-PASS sections">
+        <button data-nav="survey" type="button">Surveys</button>
+        <button data-nav="course-assessment" type="button">Course</button>
+        <button data-nav="evaluation" type="button">Performance</button>
+      </nav>
+    </main>
+    <footer>Review all answers before submitting. <strong>Never auto-submits.</strong></footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

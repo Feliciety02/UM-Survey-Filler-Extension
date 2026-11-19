@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="UM-PASS Survey Filler logo, 16px">
+  <rect width="16" height="16" rx="4" fill="#810c24"/>
+  <rect x="2.5" y="3" width="11" height="11" rx="1.5" fill="#ffffff"/>
+  <rect x="5" y="2" width="6" height="2" rx="1" fill="#ffafbd"/>
+  <rect x="4" y="6" width="2" height="2" rx="1" fill="#ecd5db"/>
+  <rect x="7" y="6" width="2" height="2" rx="1" fill="#ecd5db"/>
+  <rect x="10" y="6" width="2" height="2" rx="1" fill="#810c24"/>
+  <rect x="4" y="10" width="2" height="2" rx="1" fill="#ecd5db"/>
+  <rect x="7" y="10" width="2" height="2" rx="1" fill="#810c24"/>
+  <rect x="10" y="10" width="2" height="2" rx="1" fill="#ecd5db"/>
+</svg>

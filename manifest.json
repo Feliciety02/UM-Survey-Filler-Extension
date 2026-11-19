@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "UM-PASS Survey Filler",
+  "short_name": "UM-PASS Filler",
+  "version": "1.2.0",
+  "description": "Fill supported UM-PASS surveys with a randomized 4/5 rating mix and context-aware location options. Review before submitting.",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://umpass.umindanao.edu.ph/*"
+  ],
+  "action": {
+    "default_title": "UM-PASS Survey Filler",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://umpass.umindanao.edu.ph/feedback-form/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
