@@ -1,11 +1,15 @@
-/* UM-PASS Survey Filler 1.2.1
- * Works only on the page the user is viewing. Uses native UI events, never
- * touches submit controls or sends requests. Unknown answers remain for review.
+/* UM-PASS Survey Filler 1.3.1
+ * Works only on the page the user is viewing. Uses native UI events and
+ * visible form controls. Unknown answers stop the automatic run.
  */
 (() => {
   'use strict';
 
   const STORAGE_KEY = 'umpassSurveyFiller';
+  const RUN_KEY = 'umpassSurveyFillerRun';
+  const FIXED_COMMENT = 'None';
+  const FIXED_LABORATORY = 'CCE Data Communication Laboratory';
+  const COMMENT_CONTEXT = /comment|feedback|suggestion|remark|improv|better support/i;
   const BASE = '/feedback-form/';
   const plans = new Map();
   const SITE = 'umpass.umindanao.edu.ph';
@@ -290,6 +294,7 @@
     for (const input of document.querySelectorAll('input[type="text"], textarea')) {
       if (!usable(input) || input.readOnly || handled.has(input)) continue;
       const question = questionContext(input);
+      if (input instanceof HTMLTextAreaElement && COMMENT_CONTEXT.test(question)) continue;
       const type = fieldType(question);
       if (!type) continue;
       const target = locationTarget(type, question,
@@ -302,20 +307,24 @@
     return fields;
   }
 
+  function commentFields() {
+    return [...document.querySelectorAll('form textarea:not([readonly]):not([disabled])')]
+      .filter(textarea => usable(textarea) && !textarea.id?.endsWith('-sizer') &&
+        COMMENT_CONTEXT.test(questionContext(textarea)));
+  }
+
   function fillComment(comment, overwrite) {
     const value = normalize(comment);
-    if (!value) return false;
-    for (const textarea of document.querySelectorAll('textarea:not([readonly]):not([disabled])')) {
-      if (!usable(textarea) || textarea.id?.endsWith('-sizer')) continue;
-      const context = questionContext(textarea);
-      if (!/comment|feedback|suggestion|remark/i.test(context) ||
-          /\bcampus\b|\bcollege\b|\bvenue\b/i.test(context)) continue;
-      if (!overwrite && textarea.value.trim()) continue;
+    if (!value) return 0;
+    let filled = 0;
+    for (const textarea of commentFields()) {
       const limit = textarea.maxLength > 0 ? textarea.maxLength : 350;
-      setNativeValue(textarea, value.slice(0, limit));
-      return true;
+      const answer = value.slice(0, limit);
+      if (textarea.value === answer || !overwrite && textarea.value.trim()) continue;
+      setNativeValue(textarea, answer);
+      filled++;
     }
-    return false;
+    return filled;
   }
 
   function listingCounts() {
@@ -352,14 +361,14 @@
       unanswered: ratings.filter(group => !group.answered()).length,
       locations: locations.length,
       suggestedLocations: locations.filter(field => field.target && !field.hasAnswer()).length,
-      counts,
+      counts, automation: runStatus(),
       pageTitle: document.title
     };
   }
 
-  function fill({ config = {}, overwrite = false, fresh = false }) {
+  function fill({ config = {}, overwrite = false, fresh = false, allowListForm = false }) {
     if (!isSupported()) return { ok: false, error: 'Open a UM-PASS feedback form first.' };
-    if (knownSections.map(name => `${BASE}${name}`)
+    if (!allowListForm && knownSections.map(name => `${BASE}${name}`)
       .includes(location.pathname.replace(/\/$/, ''))) {
       return { ok: true, total: 0, filled: 0, note: 'This is a survey list. Open an available individual answer form.' };
     }
@@ -380,7 +389,7 @@
       if (field.target) { if (field.choose()) locationFilled++; }
       else locationReview++;
     }
-    const commentFilled = fillComment(config.comment, false);
+    const commentFilled = fillComment(FIXED_COMMENT, true);
     return {
       ok: true, total: groups.length, filled, existing, skippedRatings,
       locationFilled, locationReview, commentFilled,
@@ -390,20 +399,381 @@
     };
   }
 
+  function readRun() {
+    try { return JSON.parse(sessionStorage.getItem(RUN_KEY) || 'null'); }
+    catch { return null; }
+  }
+
+  function writeRun(run) {
+    try { sessionStorage.setItem(RUN_KEY, JSON.stringify(run)); return true; }
+    catch { return false; }
+  }
+
+  function runStatus() {
+    const run = readRun();
+    if (!run) return null;
+    return {
+      active: run.active, phase: run.phase, section: knownSections[run.sectionIndex] || null,
+      processed: run.processed, message: run.message
+    };
+  }
+
+  function endRun(run, phase, message) {
+    writeRun({ ...run, active: false, phase, message });
+  }
+
+  function listPath(index) { return `${BASE}${knownSections[index]}`; }
+  function onList(index) { return location.pathname.replace(/\/$/, '') === listPath(index); }
+  function controlLabel(element) {
+    return normalize(element.getAttribute('aria-label') || element.getAttribute('title') ||
+      element.textContent || element.value);
+  }
+
+  function answerEntries() {
+    const controls = document.querySelectorAll('a, button, [role="button"], input[type="button"]');
+    return [...controls].filter(element => usable(element) &&
+      /^answer\s+(?:survey|evaluation|course(?: delivery)? (?:assessment|evaluation)|performance evaluation)\b/i.test(controlLabel(element)))
+      .map(element => {
+        const href = element.closest('a')?.getAttribute('href');
+        const row = element.closest('tr, li, .v-card, .v-list-item, .survey-item, .evaluation-item');
+        const id = row?.getAttribute('data-id') || row?.id || element.getAttribute('data-id');
+        const title = row?.querySelector('.v-card-title, h2, h3, h4, td:first-child, .title');
+        const label = normalize(text(title) || text(row))
+          .replace(/\b(?:answer survey|answer evaluation|pending|completed|locked|available)\b/gi, '')
+          .trim().slice(0, 180);
+        const key = href && href !== '#' ? `url:${new URL(href, location.href).href}`
+          : id ? `id:${id}` : label ? `label:${label}` : null;
+        return { element, key };
+      });
+  }
+
+  function visibleDialog() {
+    return [...document.querySelectorAll('dialog[open], [role="dialog"], .v-dialog, .modal, .v-overlay--active')]
+      .find(isVisible) || null;
+  }
+
+  function actionButton(scope, pattern) {
+    const controls = [...scope.querySelectorAll('button, input[type="submit"], [role="button"]')]
+      .filter(element => usable(element) && pattern.test(controlLabel(element).replace(/[→›]+$/, '').trim()));
+    return controls.length === 1 ? controls[0] : null;
+  }
+
+  function successNotice() {
+    return [...document.querySelectorAll('[role="alert"], .v-snackbar, .v-alert, .toast, .alert-success, .Vue-Toastification__toast--success')]
+      .some(element => isVisible(element) && /\bsuccess\b|successfully|submitted|thank you|recorded/i.test(text(element)));
+  }
+
+  function laboratorySelects() {
+    return [...document.querySelectorAll('.v-select')].filter(isVisible).map(container => {
+      const label = text(container.querySelector('.v-field-label, label'));
+      if (!/\blaboratory\b/i.test(label)) return null;
+      const input = container.querySelector('input[role="combobox"]');
+      const selected = normalize(text(container.querySelector('.v-select__selection-text')) || input?.value);
+      return { input, selected };
+    }).filter(Boolean);
+  }
+
+  function matchingLaboratoryOption(input, preference) {
+    const menu = document.getElementById(input?.getAttribute('aria-controls'));
+    if (!menu || !isVisible(menu)) return null;
+    const choices = [...menu.querySelectorAll('[role="option"], .v-list-item')].filter(usable);
+    return choices.find(choice => normalize(text(choice.querySelector('.v-list-item-title')) || text(choice))
+      .toLowerCase() === normalize(preference).toLowerCase()) || null;
+  }
+
+  let manualLabSelecting = false;
+  function enforceLaboratoryOutsideRun() {
+    if (manualLabSelecting || readRun()?.active) return false;
+    const laboratory = laboratorySelects().find(field =>
+      field.selected.toLowerCase() !== FIXED_LABORATORY.toLowerCase());
+    if (!laboratory?.input) return false;
+    manualLabSelecting = true;
+    laboratory.input.click();
+    const startedAt = Date.now();
+    function choose() {
+      if (readRun()?.active) { manualLabSelecting = false; return; }
+      const current = laboratorySelects().find(field =>
+        field.selected.toLowerCase() !== FIXED_LABORATORY.toLowerCase());
+      if (!current) { manualLabSelecting = false; return; }
+      const option = matchingLaboratoryOption(current.input, FIXED_LABORATORY);
+      if (option) {
+        option.click();
+        manualLabSelecting = false;
+      } else if (Date.now() - startedAt < 5000) setTimeout(choose, 400);
+      else manualLabSelecting = false;
+    }
+    setTimeout(choose, 400);
+    return true;
+  }
+
+  function missingRequiredFields() {
+    return [...document.querySelectorAll(
+      'form input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), form textarea, form select'
+    )].filter(element => {
+      if (!usable(element) || element.readOnly) return false;
+      const labelledBy = (element.getAttribute('aria-labelledby') || '').split(/\s+/)
+        .map(id => text(document.getElementById(id))).filter(Boolean).join(' ');
+      const label = labelledBy || labelText(element);
+      return (element.required || element.getAttribute('aria-required') === 'true' || /\*\s*$/.test(label)) &&
+        !normalize(element.value);
+    });
+  }
+
+  function advanceSection(run) {
+    run.sectionIndex++;
+    run.currentKey = null;
+    run.phase = 'scan';
+    run.phaseAt = Date.now();
+    if (run.sectionIndex >= knownSections.length) {
+      endRun(run, 'done', `Finished ${run.processed} form${run.processed === 1 ? '' : 's'} across all three sections.`);
+      return;
+    }
+    run.message = `Scanning ${knownSections[run.sectionIndex]}…`;
+    writeRun(run);
+    location.assign(listPath(run.sectionIndex));
+    schedule(700);
+  }
+
+  function markComplete(run) {
+    run.visited.push(run.currentKey);
+    run.processed++;
+    run.currentKey = null;
+    run.phase = 'scan';
+    run.phaseAt = Date.now();
+    run.message = `${run.processed} form${run.processed === 1 ? '' : 's'} submitted. Scanning for more…`;
+    writeRun(run);
+    if (!onList(run.sectionIndex)) location.assign(listPath(run.sectionIndex));
+    schedule(700);
+  }
+
+  function runAutomation(config) {
+    const run = readRun();
+    if (!run?.active || !isSupported()) return;
+    if (Date.now() - run.startedAt > 45 * 60 * 1000) {
+      endRun(run, 'error', 'Run timed out. Start again to scan the sections.');
+      return;
+    }
+    if (run.sectionIndex >= knownSections.length) { advanceSection(run); return; }
+
+    if (run.phase === 'scan') {
+      if (!onList(run.sectionIndex)) {
+        location.assign(listPath(run.sectionIndex));
+        schedule(700);
+        return;
+      }
+      if (document.readyState === 'loading' || Date.now() - run.phaseAt < 1500) {
+        schedule(1000); return;
+      }
+      const entries = answerEntries();
+      if (entries.some(entry => !entry.key) || new Set(entries.map(entry => entry.key)).size !== entries.length) {
+        endRun(run, 'error', 'Could not uniquely identify the Answer Survey buttons on this listing.');
+        return;
+      }
+      const next = entries.find(entry => !run.visited.includes(entry.key));
+      if (!next) {
+        if (!entries.length && Date.now() - run.phaseAt < 6000) {
+          schedule(1000); return;
+        }
+        if (!entries.length && listingCounts().pending) {
+          endRun(run, 'error', 'Pending entries exist, but no Answer Survey button was found.');
+          return;
+        }
+        advanceSection(run);
+        return;
+      }
+      run.currentKey = next.key;
+      run.phase = 'opening';
+      run.phaseAt = Date.now();
+      run.message = `Opening an entry in ${knownSections[run.sectionIndex]}…`;
+      writeRun(run);
+      next.element.click();
+      schedule(1000);
+      return;
+    }
+
+    if (run.phase === 'opening') {
+      const dialogForm = onList(run.sectionIndex) && visibleDialog() && collectRatingGroups().length;
+      const routeForm = !onList(run.sectionIndex) && collectRatingGroups().length;
+      if (dialogForm || routeForm) {
+        run.phase = 'filling';
+        run.phaseAt = Date.now();
+        writeRun(run);
+        schedule(0);
+      } else if (Date.now() - run.phaseAt < 10000) schedule(700);
+      else endRun(run, 'error', 'The selected entry did not open a recognized answer form.');
+      return;
+    }
+
+    if (run.phase === 'filling') {
+      const laboratory = laboratorySelects().find(field =>
+        field.selected.toLowerCase() !== FIXED_LABORATORY.toLowerCase());
+      if (laboratory) {
+        if (!laboratory.input) {
+          endRun(run, 'error', 'Could not open the Laboratory dropdown.');
+          return;
+        }
+        run.phase = 'choose-laboratory';
+        run.phaseAt = Date.now();
+        run.message = 'Choosing CCE Data Communication Laboratory…';
+        writeRun(run);
+        laboratory.input.click();
+        schedule(500);
+        return;
+      }
+      const result = fill({ config, allowListForm: onList(run.sectionIndex) });
+      if (!result.ok || !result.total) {
+        endRun(run, 'error', 'The answer form has no recognized rating questions.');
+        return;
+      }
+      if (result.locationReview) {
+        endRun(run, 'error', `${result.locationReview} location answer${result.locationReview === 1 ? '' : 's'} need your input.`);
+        return;
+      }
+      run.phase = 'ready-submit';
+      run.phaseAt = Date.now();
+      run.message = 'Checking answers before sending…';
+      writeRun(run);
+      schedule(700);
+      return;
+    }
+
+    if (run.phase === 'choose-laboratory') {
+      const laboratory = laboratorySelects().find(field =>
+        field.selected.toLowerCase() !== FIXED_LABORATORY.toLowerCase());
+      const option = laboratory && matchingLaboratoryOption(laboratory.input, FIXED_LABORATORY);
+      if (option) {
+        run.phase = 'verify-laboratory';
+        run.phaseAt = Date.now();
+        writeRun(run);
+        option.click();
+        schedule(500);
+      } else if (Date.now() - run.phaseAt < 5000) schedule(500);
+      else endRun(run, 'error', 'CCE Data Communication Laboratory was not found in the open dropdown.');
+      return;
+    }
+
+    if (run.phase === 'verify-laboratory') {
+      const laboratories = laboratorySelects();
+      const selected = laboratories.length > 0 && laboratories.every(field =>
+        field.selected.toLowerCase() === FIXED_LABORATORY.toLowerCase());
+      if (selected) {
+        run.phase = 'filling';
+        run.phaseAt = Date.now();
+        writeRun(run);
+        schedule(400);
+      } else if (Date.now() - run.phaseAt < 5000) schedule(500);
+      else endRun(run, 'error', 'The laboratory selection did not appear in the form.');
+      return;
+    }
+
+    if (run.phase === 'ready-submit') {
+      if (collectRatingGroups().some(group => !group.answered()) ||
+          collectLocationFields(config).some(field => !field.hasAnswer()) ||
+          commentFields().some(field => field.value !== FIXED_COMMENT) ||
+          missingRequiredFields().length ||
+          [...document.querySelectorAll('form')].some(form => !form.checkValidity())) {
+        endRun(run, 'error', 'The form still has unanswered or invalid fields. Review it before submitting.');
+        return;
+      }
+      const scope = onList(run.sectionIndex) ? visibleDialog() : document.querySelector('main, .v-main, form') || document;
+      if (!scope) {
+        endRun(run, 'error', 'The answer form is no longer visible.');
+        return;
+      }
+      const button = actionButton(scope, /^(?:send\s+answers?|submit(?:\s+(?:answers?|survey|evaluation))?|finish)$/i);
+      if (!button) {
+        endRun(run, 'error', 'Could not identify one Send Answer or Submit button.');
+        return;
+      }
+      run.phase = 'await-confirm';
+      run.phaseAt = Date.now();
+      run.message = 'Sending answers and waiting for confirmation…';
+      writeRun(run);
+      button.click();
+      schedule(700);
+      return;
+    }
+
+    if (run.phase === 'await-confirm') {
+      const dialog = visibleDialog();
+      const counts = dialog && text(dialog).match(/answered\s+(\d+)\s+of\s+(\d+)\s+applicable questions/i);
+      if (counts && Number(counts[1]) !== Number(counts[2])) {
+        endRun(run, 'error', 'The confirmation dialog reports unanswered questions.');
+        return;
+      }
+      const confirm = dialog && actionButton(dialog, /^(?:confirm(?:\s*&\s*submit)?|yes(?:,?\s+(?:submit|send))?|submit|send\s+answers?)$/i);
+      if (confirm) {
+        run.phase = 'await-result';
+        run.phaseAt = Date.now();
+        run.message = 'Confirming submission…';
+        writeRun(run);
+        confirm.click();
+        schedule(800);
+      } else if (successNotice() || onList(run.sectionIndex) && !answerEntries().some(entry => entry.key === run.currentKey)) {
+        run.phase = 'await-result';
+        writeRun(run);
+        schedule(0);
+      } else if (Date.now() - run.phaseAt < 10000) schedule(700);
+      else endRun(run, 'error', 'No confirmation button appeared after Send Answer.');
+      return;
+    }
+
+    if (run.phase === 'await-result') {
+      if (successNotice()) { markComplete(run); return; }
+      if (onList(run.sectionIndex) && document.readyState !== 'loading' &&
+          Date.now() - run.phaseAt > 1200 &&
+          !answerEntries().some(entry => entry.key === run.currentKey)) {
+        markComplete(run); return;
+      }
+      if (Date.now() - run.phaseAt < 12000) schedule(800);
+      else endRun(run, 'error', 'Submission could not be verified. No further forms were opened.');
+    }
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     if (message?.type === 'UM_PASS_INSPECT') respond(inspect(message.config));
-    if (message?.type === 'UM_PASS_FILL') respond(fill(message));
+    if (message?.type === 'UM_PASS_FILL') {
+      const result = fill(message);
+      result.labPending = enforceLaboratoryOutsideRun();
+      respond(result);
+    }
+    if (message?.type === 'UM_PASS_START') {
+      const run = {
+        active: true, phase: 'scan', sectionIndex: 0, currentKey: null,
+        visited: [], processed: 0, startedAt: Date.now(), phaseAt: Date.now(),
+        message: 'Scanning Survey…'
+      };
+      const ok = isSupported() && writeRun(run);
+      respond({ ok, error: ok ? null : 'Open UM-PASS in this tab before starting.' });
+      if (ok) schedule(0);
+    }
+    if (message?.type === 'UM_PASS_STOP') {
+      const run = readRun();
+      if (run?.active) endRun(run, 'stopped', 'Stopped by you.');
+      respond({ ok: true });
+    }
   });
 
   let timeout;
-  function schedule() {
+  let scheduledFor = Infinity;
+  function schedule(delay = 450) {
+    const wait = typeof delay === 'number' ? delay : 450;
+    const due = Date.now() + wait;
+    if (timeout && due >= scheduledFor) return;
     clearTimeout(timeout);
+    scheduledFor = due;
     timeout = setTimeout(() => {
+      timeout = null;
+      scheduledFor = Infinity;
       chrome.storage.local.get(STORAGE_KEY, result => {
         const config = result[STORAGE_KEY] || {};
-        if (config.autoFill) fill({ config, overwrite: false, fresh: false });
+        if (readRun()?.active) runAutomation(config);
+        else if (config.autoFill) {
+          fill({ config, overwrite: false, fresh: false });
+          enforceLaboratoryOutsideRun();
+        }
       });
-    }, 450);
+    }, wait);
   }
   const observer = new MutationObserver(mutations => {
     if (mutations.some(mutation => mutation.type === 'childList' &&
