@@ -16,7 +16,7 @@ function popupElement() {
 }
 
 async function openPopup({ tabUrl = 'https://umpass.umindanao.edu.ph/feedback-form/course-assessment',
-  receiverInitiallyPresent = false } = {}) {
+  receiverInitiallyPresent = false, scriptVersion = '1.3.10' } = {}) {
   const ids = ['auto-fill', 'location-mode', 'start', 'stop', 'fill', 'status-indicator',
     'status-title', 'status-info', 'result'];
   const elements = Object.fromEntries(ids.map(id => [id, popupElement()]));
@@ -37,7 +37,8 @@ async function openPopup({ tabUrl = 'https://umpass.umindanao.edu.ph/feedback-fo
         }
         chrome.runtime.lastError = null;
         callback(message.type === 'UM_PASS_INSPECT'
-          ? { ok: true, supported: true, isList: true, section: 'Course Delivery', automation: null }
+          ? { ok: true, supported: true, scriptVersion, isList: true,
+              section: 'Course Delivery', automation: null }
           : { ok: true });
       }
     },
@@ -81,4 +82,10 @@ test('popup does not inject when a content script already responds', async () =>
   const popup = await openPopup({ receiverInitiallyPresent: true });
   assert.equal(popup.calls.filter(call => call.kind === 'inject').length, 0);
   assert.equal(popup.elements.start.disabled, false);
+});
+
+test('popup blocks Start when the tab still has an older content script', async () => {
+  const popup = await openPopup({ receiverInitiallyPresent: true, scriptVersion: '1.3.9' });
+  assert.equal(popup.elements.start.disabled, true);
+  assert.match(popup.elements['status-info'].textContent, /Refresh the tab/);
 });

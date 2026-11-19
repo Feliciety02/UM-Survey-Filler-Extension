@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'umpassSurveyFiller';
+const SCRIPT_VERSION = '1.3.10';
 const $ = id => document.getElementById(id);
 const ui = {
   autoFill: $('auto-fill'), locationMode: $('location-mode'),
@@ -75,11 +76,18 @@ async function refresh() {
   ui.start.hidden = running;
   ui.stop.hidden = !running;
   ui.fill.disabled = running;
+  ui.start.disabled = !state?.ok || !state.supported || state.scriptVersion !== SCRIPT_VERSION;
   if (!state?.ok || !state.supported) {
     ui.title.textContent = isFeedbackUrl(tabUrl) ? 'Could not connect to UM-PASS' : 'Open a UM-PASS form';
     ui.info.textContent = isFeedbackUrl(tabUrl)
       ? 'Refresh this tab or allow extension access to UM-PASS.'
       : 'Select an available feedback form.';
+    return;
+  }
+  if (state.scriptVersion !== SCRIPT_VERSION) {
+    ui.title.textContent = 'Refresh UM-PASS tab';
+    ui.info.textContent = 'This tab has an older extension script. Refresh the tab, then reopen the extension.';
+    ui.fill.disabled = true;
     return;
   }
   if (running) {
@@ -102,6 +110,7 @@ async function refresh() {
   }
   ui.title.textContent = `${state.section} — ${state.total} ratings`;
   const parts = [`${state.answered} completed`, `${state.unanswered} unanswered`];
+  if (state.unansweredChoices) parts.push(`${state.unansweredChoices} Yes answers pending`);
   if (state.suggestedLocations) parts.push(`${state.suggestedLocations} location match${state.suggestedLocations === 1 ? '' : 'es'}`);
   ui.info.textContent = parts.join(' · ');
   ui.indicator.classList.add('ready');
@@ -111,13 +120,12 @@ async function init() {
   Object.assign(config, stored);
   delete config.labChoice;
   delete config.comment;
-  // Older v1.0 saved rating is deliberately ignored; current versions mix 4 / 5.
+  // Older saved rating settings are ignored; current versions use fixed alternating patterns.
   config.locationMode = ['smart','off','cce','gym'].includes(config.locationMode) ? config.locationMode : 'smart';
   ui.autoFill.checked = !!config.autoFill;
   ui.locationMode.value = config.locationMode;
   await selectActiveTab();
   await refresh();
-  ui.start.disabled = false;
 }
 ui.autoFill.addEventListener('change', async () => {
   config.autoFill = ui.autoFill.checked;
@@ -155,16 +163,18 @@ ui.fill.addEventListener('click', async () => {
   ui.fill.disabled = true;
   ui.fill.textContent = 'Filling…';
   await save();
-  const response = await send('UM_PASS_FILL', { config, overwrite: false, fresh: false });
+  const response = await send('UM_PASS_FILL', { config, overwrite: false });
   if (!response) show('Could not connect to the form. Refresh the page and try again.', true);
   else if (!response.ok) show(response.error || 'Unable to fill this page.', true);
-  else if (!response.filled && !response.locationFilled && !response.commentFilled && !response.labPending) show(response.note || 'No unanswered matching fields found.');
+  else if (!response.filled && !response.choiceFilled && !response.locationFilled && !response.commentFilled && !response.labPending) show(response.note || 'No unanswered matching fields found.');
   else {
     const parts = [`${response.filled || 0} ratings`];
     if (response.locationFilled) parts.push(`${response.locationFilled} location${response.locationFilled === 1 ? '' : 's'}`);
     if (response.locationReview) parts.push(`${response.locationReview} locations to review`);
     if (response.existing) parts.push(`${response.existing} unchanged`);
     if (response.commentFilled) parts.push(`${response.commentFilled} comment${response.commentFilled === 1 ? '' : 's'} set to None`);
+    if (response.choiceFilled) parts.push(`${response.choiceFilled} Yes answer${response.choiceFilled === 1 ? '' : 's'}`);
+    if (response.choiceReview) parts.push(`${response.choiceReview} Yes answers to verify`);
     if (response.labPending) parts.push('selecting CCE Data Communication Laboratory');
     show(`Filled ${parts.join(' · ')}. Review before submitting.`);
   }

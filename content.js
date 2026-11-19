@@ -1,19 +1,20 @@
-/* UM-PASS Survey Filler 1.3.4
+/* UM-PASS Survey Filler 1.3.10
  * Works only on the page the user is viewing. Uses native UI events and
- * visible form controls. Unknown answers stop the automatic run.
+ * visible form controls. Forms needing input are left for manual review.
  */
 (() => {
   'use strict';
 
   const STORAGE_KEY = 'umpassSurveyFiller';
+  const SCRIPT_VERSION = '1.3.10';
   const RUN_KEY = 'umpassSurveyFillerRun';
   const FIXED_COMMENT = 'None';
   const FIXED_LABORATORY = 'CCE Data Communication Laboratory';
   const COMMENT_CONTEXT = /comment|feedback|suggestion|remark|improv|better support/i;
   const BASE = '/feedback-form/';
-  const plans = new Map();
   const SITE = 'umpass.umindanao.edu.ph';
   const knownSections = ['survey', 'course-assessment', 'evaluation'];
+  const sectionNavLabels = ['Survey', 'Course Assessment', 'Performance Evaluation'];
   const QUICK_CHECK_MS = 150;
   const LIST_SETTLE_MS = 300;
   const SCORE_LABELS = [
@@ -53,7 +54,7 @@
     for (const raw of candidates) {
       const value = normalize(raw);
       if (!value) continue;
-      const numeric = value.match(/^([1-5])(?:\s*$|\s*[-–.:)]\s*|\s+\D)/);
+      const numeric = value.match(/^(10|[1-9])(?:\s*$|\s*[-–.:)]\s*|\s+\D)/);
       if (numeric) return Number(numeric[1]);
       for (const [regex, score] of SCORE_LABELS) {
         if (regex.test(value)) return score;
@@ -70,15 +71,25 @@
       element.closest('.v-selection-control--dirty'));
   }
 
+  function ratingScale(scores) {
+    const values = scores.filter(score => Number.isInteger(score));
+    const found = new Set(values);
+    if (values.length === 10 && found.size === 10 &&
+        Array.from({ length: 10 }, (_, index) => index + 1).every(score => found.has(score))) return 10;
+    if (values.length >= 4 && values.length <= 5 && found.size === values.length &&
+        found.has(4) && found.has(5) && values.every(score => score >= 1 && score <= 5)) return 5;
+    return null;
+  }
+
   function ratingGroup(elements, container) {
     const options = [...elements].filter(usable).map(element => ({ element, score: scoreOf(element) }));
-    const found = new Set(options.map(option => option.score));
     // A rating has one control per score. Duplicate scores usually mean a
     // parent container includes several separate questions.
-    if (options.length < 4 || options.length > 5 || !found.has(4) || !found.has(5) ||
-        found.size !== options.length || options.some(option => option.score === null)) return null;
+    if (options.some(option => option.score === null)) return null;
+    const scale = ratingScale(options.map(option => option.score));
+    if (!scale) return null;
     return {
-      container,
+      container, scale,
       anchor: options[0].element,
       answered: () => options.some(option => selected(option.element)),
       choose(score) {
@@ -105,10 +116,10 @@
     const groups = [];
     const seen = new Set();
 
-    // Native UM-PASS rating buttons, generic accessible radio controls,
-    // and Vuetify radio/toggle groups on unseen evaluation layouts.
+    // UM-PASS also uses plain role=group containers for ten-point surveys.
+    // The complete numeric scale check below rejects unrelated groups.
     const containers = document.querySelectorAll(
-      '.rating-options, [role="radiogroup"], .v-radio-group, ' +
+      '.rating-options, [role="group"], [role="radiogroup"], .v-radio-group, ' +
       '.v-selection-control-group, .v-btn-toggle, .v-input--radio-group, fieldset'
     );
     // Descendants appear after ancestors in document order. Claim the most
@@ -136,16 +147,16 @@
       inputs.forEach(input => seen.add(input));
     }
 
-    // Standard HTML select elements with a complete 1–5 scale.
+    // Standard HTML select elements with a numeric rating scale.
     for (const element of document.querySelectorAll('select:not([disabled])')) {
       if (!isVisible(element)) continue;
       const options = [...element.options]
         .filter(option => !option.disabled)
         .map(option => ({ score: scoreOf(option), value: option.value }));
-      const scores = new Set(options.map(option => option.score));
-      if (scores.size < 4 || !scores.has(4) || !scores.has(5)) continue;
+      const scale = ratingScale(options.map(option => option.score));
+      if (!scale) continue;
       groups.push({
-        container: element,
+        container: element, scale,
         anchor: element,
         answered: () => options.some(option => option.value === element.value && option.score !== null),
         choose(score) {
@@ -161,37 +172,39 @@
       a.anchor.compareDocumentPosition(b.anchor) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
   }
 
-  function randomInt(max) {
-    const values = new Uint32Array(1);
-    crypto.getRandomValues(values);
-    return values[0] % max;
+  function alternatingScores(groups) {
+    let fiveIndex = 0, tenIndex = 0;
+    return groups.map(group => group.scale === 10
+      ? (tenIndex++ % 2 === 0 ? 9 : 10)
+      : (fiveIndex++ % 2 === 0 ? 5 : 4));
   }
 
-  function makePlan(count) {
-    // Balance 4s and 5s. Randomize their order, avoiding three equal scores
-    // in a row; a new form gets a fresh plan with the same distribution.
-    if (!count) return [];
-    const startFive = randomInt(2) === 0;
-    const fiveCount = Math.floor(count / 2) + ((count % 2 && startFive) ? 1 : 0);
-    const base = [...Array(fiveCount).fill(5), ...Array(count - fiveCount).fill(4)];
-    for (let attempt = 0; attempt < 250; attempt++) {
-      const shuffled = [...base];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = randomInt(i + 1);
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      if (!shuffled.some((v, i) => i >= 2 && shuffled[i - 1] === v && shuffled[i - 2] === v)) {
-        return shuffled;
-      }
-    }
-    // Fallback preserves balance while alternating with a random first score.
-    return Array.from({ length: count }, (_, i) => ((i + Number(startFive)) % 2 ? 5 : 4));
-  }
-
-  function planFor(count, fresh) {
-    const key = `${location.pathname}${location.search}`;
-    if (fresh || !plans.has(key) || plans.get(key).length !== count) plans.set(key, makePlan(count));
-    return plans.get(key);
+  function yesNoGroups() {
+    return [...document.querySelectorAll('.rating-options')].map(container => {
+      if (!isVisible(container)) return null;
+      const controls = [...container.querySelectorAll('button, input[type="radio"], [role="radio"]')]
+        .filter(usable);
+      if (controls.length !== 3) return null;
+      const options = controls.map(element => {
+        const label = normalize(element.getAttribute('aria-label') || element.getAttribute('title') ||
+          labelText(element) || text(element));
+        const answer = /^yes\b/i.test(label) ? 'yes' : /^no\b/i.test(label) ? 'no' :
+          /^not\s+sure\b/i.test(label) ? 'not-sure' : null;
+        return { element, answer };
+      });
+      if (new Set(options.map(option => option.answer)).size !== 3 ||
+          options.some(option => !option.answer)) return null;
+      return {
+        answered: () => options.some(option => selected(option.element)),
+        selectedAnswer: () => options.find(option => selected(option.element))?.answer || null,
+        choose(answer) {
+          const option = options.find(item => item.answer === answer);
+          if (!option) return false;
+          if (!selected(option.element)) option.element.click();
+          return true;
+        }
+      };
+    }).filter(Boolean);
   }
 
   function questionContext(element) {
@@ -262,7 +275,7 @@
       const choices = [...select.options].filter(option => option.value !== '' && !option.disabled)
         .map(option => ({ label: text(option), value: option.value }));
       // Rating scale selects are not location fields.
-      if (choices.filter(choice => /^(?:[1-5])$/.test(choice.label)).length >= 4) continue;
+      if (ratingScale([...select.options].map(scoreOf))) continue;
       const target = locationTarget(type, context, choices, config);
       fields.push({
         type, target, hasAnswer: () => select.value !== '',
@@ -278,6 +291,7 @@
     }
     for (const radios of byName.values()) {
       if (radios.length < 2) continue;
+      if (ratingScale(radios.map(scoreOf))) continue;
       const context = questionContext(radios[0]);
       const type = fieldType(context);
       if (!type) continue;
@@ -310,7 +324,7 @@
   }
 
   function commentFields() {
-    return [...document.querySelectorAll('form textarea:not([readonly]):not([disabled])')]
+    return [...document.querySelectorAll('textarea:not([readonly]):not([disabled])')]
       .filter(textarea => usable(textarea) && !textarea.id?.endsWith('-sizer') &&
         COMMENT_CONTEXT.test(questionContext(textarea)));
   }
@@ -351,16 +365,18 @@
   function inspect(config = {}) {
     if (!isSupported()) return { ok: false, supported: false };
     const ratings = collectRatingGroups();
+    const choices = yesNoGroups();
     const locations = collectLocationFields(config);
     const path = location.pathname;
     const isList = knownSections.map(name => `${BASE}${name}`)
       .includes(path.replace(/\/$/, ''));
     const counts = isList ? listingCounts() : null;
     return {
-      ok: true, supported: true, section: section(), isList,
+      ok: true, supported: true, scriptVersion: SCRIPT_VERSION, section: section(), isList,
       total: ratings.length,
       answered: ratings.filter(group => group.answered()).length,
       unanswered: ratings.filter(group => !group.answered()).length,
+      unansweredChoices: choices.filter(group => !group.answered()).length,
       locations: locations.length,
       suggestedLocations: locations.filter(field => field.target && !field.hasAnswer()).length,
       counts, automation: runStatus(),
@@ -368,7 +384,7 @@
     };
   }
 
-  function fill({ config = {}, overwrite = false, fresh = false, allowListForm = false }) {
+  function fill({ config = {}, overwrite = false, allowListForm = false }) {
     if (!isSupported()) return { ok: false, error: 'Open a UM-PASS feedback form first.' };
     if (!allowListForm && knownSections.map(name => `${BASE}${name}`)
       .includes(location.pathname.replace(/\/$/, ''))) {
@@ -376,13 +392,18 @@
     }
 
     const groups = collectRatingGroups();
-    const plan = planFor(groups.length, fresh);
+    const plan = alternatingScores(groups);
     let filled = 0, existing = 0, skippedRatings = 0;
     for (let index = 0; index < groups.length; index++) {
       const group = groups[index];
       if (group.answered() && !overwrite) { existing++; continue; }
       if (group.choose(plan[index])) filled++;
       else skippedRatings++;
+    }
+
+    let choiceFilled = 0;
+    for (const group of yesNoGroups()) {
+      if (group.selectedAnswer() !== 'yes' && group.choose('yes')) choiceFilled++;
     }
 
     let locationFilled = 0, locationReview = 0;
@@ -392,9 +413,10 @@
       else locationReview++;
     }
     const commentFilled = fillComment(FIXED_COMMENT, true);
+    const choiceReview = yesNoGroups().filter(group => group.selectedAnswer() !== 'yes').length;
     return {
       ok: true, total: groups.length, filled, existing, skippedRatings,
-      locationFilled, locationReview, commentFilled,
+      locationFilled, locationReview, commentFilled, choiceFilled, choiceReview,
       note: (groups.length || locationFilled)
         ? 'Review all answers and submit manually.'
         : 'No compatible rating questions found. Open an individual answer form.'
@@ -416,7 +438,7 @@
     if (!run) return null;
     return {
       active: run.active, phase: run.phase, section: knownSections[run.sectionIndex] || null,
-      processed: run.processed, message: run.message
+      processed: run.processed, skipped: run.skipped || 0, message: run.message
     };
   }
 
@@ -426,6 +448,40 @@
 
   function listPath(index) { return `${BASE}${knownSections[index]}`; }
   function onList(index) { return location.pathname.replace(/\/$/, '') === listPath(index); }
+  let navigationAttempt = null;
+  function hardNavigate(path) {
+    navigationAttempt = {
+      path, at: Date.now(), sourceTitle: document.title,
+      sourcePage: document.querySelector('.page-content'), hardReloading: true
+    };
+    location.assign(path);
+    schedule(500);
+  }
+  function navigateToList(index) {
+    const path = listPath(index);
+    const backLink = [...document.querySelectorAll('a[href]')].find(link => {
+      const href = link.getAttribute('href');
+      if (!href || !isVisible(link) || !/\b(?:back|feedback forms)\b/i.test(text(link))) return false;
+      try {
+        const target = new URL(href, location.href);
+        return target.hostname === SITE && target.pathname.replace(/\/$/, '') === path;
+      } catch { return false; }
+    });
+    const navItem = !backLink && [...document.querySelectorAll('.nav-item')]
+      .find(item => isVisible(item) &&
+        text(item.querySelector('.nav-text')) === sectionNavLabels[index]);
+    const control = backLink || navItem;
+    if (control) {
+      navigationAttempt = {
+        path, at: Date.now(), sourceTitle: document.title,
+        sourcePage: document.querySelector('.page-content')
+      };
+      control.click();
+      schedule(QUICK_CHECK_MS);
+    } else {
+      hardNavigate(path);
+    }
+  }
   function controlLabel(element) {
     return normalize(element.getAttribute('aria-label') || element.getAttribute('title') ||
       element.textContent || element.value);
@@ -433,19 +489,32 @@
 
   function answerEntries() {
     const controls = document.querySelectorAll('a, button, [role="button"], input[type="button"]');
-    return [...controls].filter(element => usable(element) &&
-      /^answer\s+(?:survey|evaluation|course(?: delivery)? (?:assessment|evaluation)|performance evaluation)\b/i.test(controlLabel(element)))
+    const answerLabel = /^answer\s+(?:survey|evaluation|course(?: delivery)? (?:assessment|evaluation)|performance evaluation)\b/i;
+    return [...controls].filter(element => {
+      if (!usable(element) || !answerLabel.test(controlLabel(element))) return false;
+      const outerLink = element.closest('a[href]');
+      // A button inside an answer link is the same entry, not a second entry.
+      return !outerLink || outerLink === element || !answerLabel.test(controlLabel(outerLink));
+    })
       .map(element => {
-        const href = element.closest('a')?.getAttribute('href');
+        const link = element.closest('a[href]') || element.closest('a');
+        const href = link?.getAttribute('href');
+        let url = null;
+        try {
+          if (href && href !== '#') url = new URL(href, location.href);
+        } catch { /* Use the row identifier or label below. */ }
         const row = element.closest('tr, li, .v-card, .v-list-item, .survey-item, .evaluation-item');
         const id = row?.getAttribute('data-id') || row?.id || element.getAttribute('data-id');
         const title = row?.querySelector('.v-card-title, h2, h3, h4, td:first-child, .title');
         const label = normalize(text(title) || text(row))
           .replace(/\b(?:answer survey|answer evaluation|pending|completed|locked|available)\b/gi, '')
           .trim().slice(0, 180);
-        const key = href && href !== '#' ? `url:${new URL(href, location.href).href}`
+        const key = url ? `url:${url.href}`
           : id ? `id:${id}` : label ? `label:${label}` : null;
-        return { element, key };
+        const opensNewTab = /^(?:_blank|_new)$/i.test(link?.getAttribute('target') || '');
+        const sameSiteUrl = url?.protocol === 'https:' && url.hostname === SITE &&
+          url.pathname.startsWith(BASE) ? url.href : null;
+        return { element, key, sameSiteUrl, opensNewTab };
       });
   }
 
@@ -524,45 +593,97 @@
   function advanceSection(run) {
     run.sectionIndex++;
     run.currentKey = null;
+    run.visited = [];
     run.phase = 'scan';
     run.phaseAt = Date.now();
     if (run.sectionIndex >= knownSections.length) {
-      endRun(run, 'done', `Finished ${run.processed} form${run.processed === 1 ? '' : 's'} across all three sections.`);
+      const skipped = run.skipped || 0;
+      endRun(run, 'done', skipped
+        ? `Scan finished: ${run.processed} submitted; ${skipped} need manual review.`
+        : `Finished ${run.processed} form${run.processed === 1 ? '' : 's'} across all three sections.`);
       return;
     }
     run.message = `Scanning ${knownSections[run.sectionIndex]}…`;
     writeRun(run);
-    location.assign(listPath(run.sectionIndex));
-    schedule(500);
+    navigateToList(run.sectionIndex);
   }
 
   function markComplete(run) {
     run.visited.push(run.currentKey);
     run.processed++;
+    if (run.initialForm) {
+      run.initialSectionIndex = run.sectionIndex;
+      run.initialKey = run.currentKey;
+      run.initialForm = false;
+      run.sectionIndex = 0;
+      run.visited = [];
+    }
     run.currentKey = null;
     run.phase = 'scan';
     run.phaseAt = Date.now();
     run.message = `${run.processed} form${run.processed === 1 ? '' : 's'} submitted. Scanning for more…`;
     writeRun(run);
-    if (!onList(run.sectionIndex)) location.assign(listPath(run.sectionIndex));
-    schedule(500);
+    if (!onList(run.sectionIndex)) navigateToList(run.sectionIndex);
+    else schedule(QUICK_CHECK_MS);
+  }
+
+  function skipEntry(run, reason) {
+    if (!run.currentKey) { endRun(run, 'error', reason); return; }
+    run.visited.push(run.currentKey);
+    run.skipped = (run.skipped || 0) + 1;
+    if (run.initialForm) {
+      run.initialSectionIndex = run.sectionIndex;
+      run.initialKey = run.currentKey;
+      run.initialForm = false;
+      run.sectionIndex = 0;
+      run.visited = [];
+    }
+    run.currentKey = null;
+    run.phase = 'scan';
+    run.phaseAt = Date.now();
+    run.message = `Skipped ${run.skipped} form${run.skipped === 1 ? '' : 's'}: ${reason} Continuing…`;
+    writeRun(run);
+    if (!onList(run.sectionIndex)) navigateToList(run.sectionIndex);
+    else schedule(QUICK_CHECK_MS);
   }
 
   function runAutomation(config) {
     const run = readRun();
     if (!run?.active || !isSupported()) return;
-    if (Date.now() - run.startedAt > 45 * 60 * 1000) {
-      endRun(run, 'error', 'Run timed out. Start again to scan the sections.');
-      return;
-    }
     if (run.sectionIndex >= knownSections.length) { advanceSection(run); return; }
 
     if (run.phase === 'scan') {
-      if (!onList(run.sectionIndex)) {
-        location.assign(listPath(run.sectionIndex));
+      if (navigationAttempt?.hardReloading &&
+          (!onList(run.sectionIndex) ||
+           document.title === navigationAttempt.sourceTitle &&
+           document.querySelector('.page-content') === navigationAttempt.sourcePage)) {
+        if (Date.now() - navigationAttempt.at > 10000) {
+          endRun(run, 'error', 'UM-PASS did not finish changing pages. Reload the tab and try again.');
+          return;
+        }
         schedule(500);
         return;
       }
+      if (!onList(run.sectionIndex)) {
+        if (navigationAttempt?.path === listPath(run.sectionIndex) &&
+            Date.now() - navigationAttempt.at < 3000) {
+          schedule(QUICK_CHECK_MS);
+          return;
+        }
+        hardNavigate(listPath(run.sectionIndex));
+        return;
+      }
+      if (navigationAttempt?.path === listPath(run.sectionIndex) &&
+          document.title === navigationAttempt.sourceTitle &&
+          document.querySelector('.page-content') === navigationAttempt.sourcePage) {
+        if (Date.now() - navigationAttempt.at < 3000) {
+          schedule(QUICK_CHECK_MS);
+          return;
+        }
+        hardNavigate(listPath(run.sectionIndex));
+        return;
+      }
+      navigationAttempt = null;
       if (document.readyState === 'loading' || Date.now() - run.phaseAt < LIST_SETTLE_MS) {
         schedule(QUICK_CHECK_MS); return;
       }
@@ -571,7 +692,8 @@
         endRun(run, 'error', 'Could not uniquely identify the Answer Survey buttons on this listing.');
         return;
       }
-      const next = entries.find(entry => !run.visited.includes(entry.key));
+      const next = entries.find(entry => !run.visited.includes(entry.key) &&
+        !(run.sectionIndex === run.initialSectionIndex && entry.key === run.initialKey));
       if (!next) {
         const counts = entries.length ? null : listingCounts();
         if (!entries.length && counts?.pending) {
@@ -593,7 +715,10 @@
       run.phaseAt = Date.now();
       run.message = `Opening an entry in ${knownSections[run.sectionIndex]}…`;
       writeRun(run);
-      next.element.click();
+      // Keep a target=_blank answer form in this tab so sessionStorage keeps
+      // the run state and the content script can continue to Send Assessment.
+      if (next.opensNewTab && next.sameSiteUrl) location.assign(next.sameSiteUrl);
+      else next.element.click();
       schedule(QUICK_CHECK_MS);
       return;
     }
@@ -607,7 +732,7 @@
         writeRun(run);
         schedule(0);
       } else if (Date.now() - run.phaseAt < 10000) schedule(QUICK_CHECK_MS);
-      else endRun(run, 'error', 'The selected entry did not open a recognized answer form.');
+      else skipEntry(run, 'The selected entry did not open a recognized answer form.');
       return;
     }
 
@@ -616,7 +741,7 @@
         field.selected.toLowerCase() !== FIXED_LABORATORY.toLowerCase());
       if (laboratory) {
         if (!laboratory.input) {
-          endRun(run, 'error', 'Could not open the Laboratory dropdown.');
+          skipEntry(run, 'Could not open the Laboratory dropdown.');
           return;
         }
         run.phase = 'choose-laboratory';
@@ -629,11 +754,16 @@
       }
       const result = fill({ config, allowListForm: onList(run.sectionIndex) });
       if (!result.ok || !result.total) {
-        endRun(run, 'error', 'The answer form has no recognized rating questions.');
+        skipEntry(run, 'The answer form has no recognized rating questions.');
         return;
       }
       if (result.locationReview) {
-        endRun(run, 'error', `${result.locationReview} location answer${result.locationReview === 1 ? '' : 's'} need your input.`);
+        skipEntry(run, `${result.locationReview} location answer${result.locationReview === 1 ? '' : 's'} need your input.`);
+        return;
+      }
+      if (result.choiceReview) {
+        if (Date.now() - run.phaseAt < 2000) { schedule(QUICK_CHECK_MS); return; }
+        skipEntry(run, `${result.choiceReview} Yes answer${result.choiceReview === 1 ? '' : 's'} could not be verified.`);
         return;
       }
       run.phase = 'ready-submit';
@@ -655,7 +785,7 @@
         option.click();
         schedule(QUICK_CHECK_MS);
       } else if (Date.now() - run.phaseAt < 5000) schedule(QUICK_CHECK_MS);
-      else endRun(run, 'error', 'CCE Data Communication Laboratory was not found in the open dropdown.');
+      else skipEntry(run, 'CCE Data Communication Laboratory was not found in the open dropdown.');
       return;
     }
 
@@ -669,28 +799,29 @@
         writeRun(run);
         schedule(QUICK_CHECK_MS);
       } else if (Date.now() - run.phaseAt < 5000) schedule(QUICK_CHECK_MS);
-      else endRun(run, 'error', 'The laboratory selection did not appear in the form.');
+      else skipEntry(run, 'The laboratory selection did not appear in the form.');
       return;
     }
 
     if (run.phase === 'ready-submit') {
       if (collectRatingGroups().some(group => !group.answered()) ||
+          yesNoGroups().some(group => group.selectedAnswer() !== 'yes') ||
           collectLocationFields(config).some(field => !field.hasAnswer()) ||
           commentFields().some(field => field.value !== FIXED_COMMENT) ||
           missingRequiredFields().length ||
           [...document.querySelectorAll('form')].some(form => !form.checkValidity())) {
         if (Date.now() - run.phaseAt < 2000) { schedule(QUICK_CHECK_MS); return; }
-        endRun(run, 'error', 'The form still has unanswered or invalid fields. Review it before submitting.');
+        skipEntry(run, 'The form still has unanswered or invalid fields. Review it before submitting.');
         return;
       }
       const scope = onList(run.sectionIndex) ? visibleDialog() : document.querySelector('main, .v-main, form') || document;
       if (!scope) {
-        endRun(run, 'error', 'The answer form is no longer visible.');
+        skipEntry(run, 'The answer form is no longer visible.');
         return;
       }
-      const button = actionButton(scope, /^(?:send\s+answers?|submit(?:\s+(?:answers?|survey|evaluation))?|finish)$/i);
+      const button = actionButton(scope, /^(?:send\s+(?:answers?|assessment|evaluation)|submit(?:\s+(?:answers?|survey|assessment|evaluation))?|finish)$/i);
       if (!button) {
-        endRun(run, 'error', 'Could not identify one Send Answer or Submit button.');
+        skipEntry(run, 'Could not identify one Send Answer, Send Assessment, or Submit button.');
         return;
       }
       run.phase = 'await-confirm';
@@ -709,7 +840,7 @@
         endRun(run, 'error', 'The confirmation dialog reports unanswered questions.');
         return;
       }
-      const confirm = dialog && actionButton(dialog, /^(?:confirm(?:\s*&\s*submit)?|yes(?:,?\s+(?:submit|send))?|submit|send\s+answers?)$/i);
+      const confirm = dialog && actionButton(dialog, /^(?:confirm(?:\s*(?:&|and)\s*submit|\s+(?:assessment|evaluation|submission))?|yes(?:,?\s+(?:submit|send))(?:\s+(?:answers?|assessment|evaluation))?|submit(?:\s+(?:answers?|assessment|evaluation))?|send\s+(?:answers?|assessment|evaluation))$/i);
       if (confirm) {
         run.phase = 'await-result';
         run.phaseAt = Date.now();
@@ -722,7 +853,7 @@
         writeRun(run);
         schedule(0);
       } else if (Date.now() - run.phaseAt < 10000) schedule(QUICK_CHECK_MS);
-      else endRun(run, 'error', 'No confirmation button appeared after Send Answer.');
+      else endRun(run, 'error', 'No confirmation button appeared after sending.');
       return;
     }
 
@@ -746,10 +877,17 @@
       respond(result);
     }
     if (message?.type === 'UM_PASS_START') {
+      const formSection = knownSections.findIndex(name =>
+        location.pathname.startsWith(`${BASE}${name}/`));
+      const startsOnForm = formSection >= 0 && /\/answer(?:\/|$)/.test(location.pathname) &&
+        collectRatingGroups().length > 0;
       const run = {
-        active: true, phase: 'scan', sectionIndex: 0, currentKey: null,
-        visited: [], processed: 0, startedAt: Date.now(), phaseAt: Date.now(),
-        message: 'Scanning Survey…'
+        active: true, phase: startsOnForm ? 'filling' : 'scan',
+        sectionIndex: startsOnForm ? formSection : 0,
+        currentKey: startsOnForm ? `url:${location.href}` : null,
+        initialForm: startsOnForm,
+        visited: [], processed: 0, skipped: 0, phaseAt: Date.now(),
+        message: startsOnForm ? 'Filling the open form…' : 'Scanning Survey…'
       };
       const ok = isSupported() && writeRun(run);
       respond({ ok, error: ok ? null : 'Open UM-PASS in this tab before starting.' });
@@ -777,7 +915,7 @@
         const config = result[STORAGE_KEY] || {};
         if (readRun()?.active) runAutomation(config);
         else if (config.autoFill) {
-          fill({ config, overwrite: false, fresh: false });
+          fill({ config, overwrite: false });
           enforceLaboratoryOutsideRun();
         }
       });
