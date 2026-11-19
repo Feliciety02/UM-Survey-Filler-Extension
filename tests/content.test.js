@@ -218,12 +218,14 @@ test('college is left blank in Smart mode and filled only with Prefer CCE', () =
 
 function makeAutomationPage({
   hasConfirm = true, hasSuccess = true, entryCount = 2, autoFill = false,
-  sendLabel = 'Send Answer',
+  sendLabel = 'Send Answer', confirmLabel = 'Confirm & Submit',
   initialComment = 'Existing improvement', initialLaboratory = 'CCE Data Communication Laboratory',
   laboratoryAvailable = true, dialogIncomplete = false, listingStatus = 'Completed',
   clientNavigation = false, stalledBackLink = false, ratingCount = 5, groupOnly = false,
   choiceGroupCount = 0, choiceSelectionWorks = true, unrecognizedEntry = -1,
-  newTabAnswerLinks = false, startsOnAnswerForm = false
+  organizationChoiceGroups = 0, organizationChoiceNA = false,
+  newTabAnswerLinks = false, startsOnAnswerForm = false, initialOrganization = null,
+  organizationDropdown = false
 } = {}) {
   const fixedLaboratory = 'CCE Data Communication Laboratory';
   let now = 10000;
@@ -265,11 +267,32 @@ function makeAutomationPage({
       return button;
     })
   ));
+  for (let groupIndex = 0; groupIndex < organizationChoiceGroups; groupIndex++) {
+    const labels = ['Yes - Yes', 'No - No', organizationChoiceNA
+      ? 'N/A - Not applicable' : 'Not Sure - Not Sure'];
+    const group = container(labels.map((label, index) => {
+      const button = new Element({ value: String(index + 1) });
+      button.attributes['aria-label'] = label;
+      return button;
+    }));
+    group.closest = selector => /fieldset|question-item|question-card|v-card/.test(selector)
+      ? { textContent: 'Do you belong to a student organization?', querySelector: () => null }
+      : null;
+    choiceGroups.push(group);
+  }
   const improvementLabel = '44. What specific aspects of this laboratory should be improved? *';
   const improvement = new Element({ label: improvementLabel, value: initialComment });
   improvement.id = 'improvement';
   improvement.attributes['aria-labelledby'] = 'improvement-label';
   const generalComment = new Element({ label: 'Comments about campus facilities', value: 'Existing comment' });
+  const organizationInput = initialOrganization === null ? null
+    : organizationDropdown
+      ? new Select({ label: 'Student organization', value: initialOrganization, options: [
+        { value: '', label: 'Select an organization' },
+        { value: 'na', label: 'N/A (No organization)' }
+      ] })
+      : new Element({ label: 'Name of student organization', value: initialOrganization });
+  if (organizationInput) organizationInput.required = true;
   let menuOpen = false;
   const labInput = new Element({ value: initialLaboratory });
   labInput.required = true;
@@ -301,6 +324,7 @@ function makeAutomationPage({
       choiceGroups.forEach(group => group.querySelectorAll().forEach(control => { control.checked = false; }));
       improvement.value = initialComment;
       generalComment.value = 'Existing comment';
+      if (organizationInput) organizationInput.value = initialOrganization;
       labInput.value = initialLaboratory;
       labSelection.textContent = initialLaboratory;
       menuOpen = false;
@@ -324,7 +348,7 @@ function makeAutomationPage({
   }
   const sendButton = new Element({ text: sendLabel });
   sendButton.click = () => { sendClicks++; view = hasConfirm ? 'confirm' : 'waiting'; };
-  const confirmButton = new Element({ text: 'Confirm & Submit' });
+  const confirmButton = new Element({ text: confirmLabel });
   confirmButton.click = () => {
     confirmClicks++;
     if (hasSuccess) { submittedEntries.add(currentEntry); view = 'success'; }
@@ -372,6 +396,8 @@ function makeAutomationPage({
       if (selector === '.v-chip__content, .status-chip, [data-status]') return view === 'list' ? [statusChip] : [];
       if (selector === '.v-select') return view === 'form' ? [labContainer] : [];
       if (selector === 'textarea:not([readonly]):not([disabled])') return view === 'form' ? [improvement, generalComment] : [];
+      if (selector === 'form input:not([type]), form input[type="text"], form textarea, form select')
+        return view === 'form' && organizationInput ? [organizationInput] : [];
       if (selector.startsWith('form input:not([type="hidden"])')) return view === 'form' ? [labInput, improvement, generalComment] : [];
       return [];
     },
@@ -437,6 +463,7 @@ function makeAutomationPage({
     get selectedChoices() { return choiceGroups.map(group =>
       group.querySelectorAll().find(control => control.checked)?.getAttribute('aria-label') || null); },
     get commentValues() { return [improvement.value, generalComment.value]; },
+    get organizationValue() { return organizationInput?.value; },
     get laboratoryValue() { return labInput.value; }
   };
 }
@@ -478,8 +505,48 @@ test('Start submits an Exit Survey after selecting Yes for all choices', () => {
   assert.ok(page.selectedChoices.every(choice => choice === 'Yes - Yes'));
 });
 
+test('organization membership uses No while other choices and ratings are filled', () => {
+  const page = makeAutomationPage({
+    entryCount: 1, choiceGroupCount: 1, organizationChoiceGroups: 1
+  });
+  assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
+  page.advance(5000);
+
+  const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
+  assert.equal(state.phase, 'done');
+  assert.deepEqual(page.selectedChoices, ['Yes - Yes', 'No - No']);
+  assert.deepEqual(page.selectedRatings, ['5']);
+});
+
+test('organization membership uses N/A when that choice is offered', () => {
+  const page = makeAutomationPage({
+    entryCount: 1, organizationChoiceGroups: 1, organizationChoiceNA: true
+  });
+  assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
+  page.advance(5000);
+
+  const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
+  assert.equal(state.phase, 'done');
+  assert.deepEqual(page.selectedChoices, ['N/A - Not applicable']);
+  assert.deepEqual(page.selectedRatings, ['5']);
+});
+
 test('Start recognizes the Undergraduate/Law Send Assessment button', () => {
   const page = makeAutomationPage({ entryCount: 1, sendLabel: 'Send Assessment' });
+  assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
+  page.advance(5000);
+
+  const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
+  assert.equal(state.phase, 'done');
+  assert.equal(state.processed, 1);
+  assert.equal(page.sendClicks, 1);
+  assert.equal(page.confirmClicks, 1);
+});
+
+test('Start recognizes Send Rating and Confirm Rating on the Law evaluation', () => {
+  const page = makeAutomationPage({
+    entryCount: 1, sendLabel: 'Send Rating', confirmLabel: 'Confirm Rating'
+  });
   assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
   page.advance(5000);
 
@@ -541,6 +608,7 @@ test('Start skips one unrecognized form and submits the next', () => {
   assert.equal(state.phase, 'done');
   assert.equal(state.processed, 1);
   assert.equal(state.skipped, 1);
+  assert.match(state.message, /Last issue: The selected entry did not open a recognized answer form/);
   assert.equal(page.sendClicks, 1);
   assert.equal(page.confirmClicks, 1);
 });
@@ -600,15 +668,43 @@ test('automation stops when Send Answer has no confirmation', () => {
   assert.equal(page.submitted, false);
 });
 
-test('comment and improvement fields are both changed to None', () => {
+test('comment and improvement fields are both changed to N/A', () => {
   const page = makeAutomationPage();
   assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
   page.advance(60000);
 
   const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
   assert.equal(state.phase, 'done');
-  assert.deepEqual(page.commentValues, ['None', 'None']);
+  assert.deepEqual(page.commentValues, ['N/A', 'N/A']);
   assert.equal(page.sendClicks, 2);
+});
+
+test('Start fills N/A for an organization name and still submits a rating', () => {
+  const page = makeAutomationPage({ entryCount: 1, initialOrganization: '' });
+  assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
+  page.advance(5000);
+
+  const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
+  assert.equal(state.phase, 'done');
+  assert.equal(state.processed, 1);
+  assert.equal(page.organizationValue, 'N/A');
+  assert.deepEqual(page.selectedRatings, ['5']);
+  assert.deepEqual(page.commentValues, ['N/A', 'N/A']);
+  assert.equal(page.confirmClicks, 1);
+});
+
+test('Start selects N/A from an organization dropdown and still rates', () => {
+  const page = makeAutomationPage({
+    entryCount: 1, initialOrganization: '', organizationDropdown: true
+  });
+  assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
+  page.advance(5000);
+
+  const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
+  assert.equal(state.phase, 'done');
+  assert.equal(state.processed, 1);
+  assert.equal(page.organizationValue, 'na');
+  assert.deepEqual(page.selectedRatings, ['5']);
 });
 
 test('a blank Laboratory dropdown is set to CCE Data Communication Laboratory', () => {
@@ -634,7 +730,7 @@ test('an existing different Laboratory selection is replaced with CCE Data Commu
   assert.equal(page.sendClicks, 2);
 });
 
-test('Fill current form sets None comments and the fixed laboratory', () => {
+test('Fill current form sets N/A comments and the fixed laboratory', () => {
   const page = makeAutomationPage({ initialLaboratory: 'Other Laboratory' });
   page.openFirstForm();
 
@@ -643,16 +739,16 @@ test('Fill current form sets None comments and the fixed laboratory', () => {
   assert.equal(result.labPending, true);
   page.advance(2000);
 
-  assert.deepEqual(page.commentValues, ['None', 'None']);
+  assert.deepEqual(page.commentValues, ['N/A', 'N/A']);
   assert.equal(page.laboratoryValue, 'CCE Data Communication Laboratory');
 });
 
-test('auto-fill also sets None comments and the fixed laboratory', () => {
+test('auto-fill also sets N/A comments and the fixed laboratory', () => {
   const page = makeAutomationPage({ autoFill: true, initialLaboratory: 'Other Laboratory' });
   page.openFirstForm();
   page.advance(2000);
 
-  assert.deepEqual(page.commentValues, ['None', 'None']);
+  assert.deepEqual(page.commentValues, ['N/A', 'N/A']);
   assert.equal(page.laboratoryValue, 'CCE Data Communication Laboratory');
   assert.equal(page.sendClicks, 0);
 });

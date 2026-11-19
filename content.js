@@ -1,4 +1,4 @@
-/* UM-PASS Survey Filler 1.3.10
+/* UM-PASS Survey Filler 1.3.12
  * Works only on the page the user is viewing. Uses native UI events and
  * visible form controls. Forms needing input are left for manual review.
  */
@@ -6,11 +6,12 @@
   'use strict';
 
   const STORAGE_KEY = 'umpassSurveyFiller';
-  const SCRIPT_VERSION = '1.3.10';
+  const SCRIPT_VERSION = '1.3.12';
   const RUN_KEY = 'umpassSurveyFillerRun';
-  const FIXED_COMMENT = 'None';
+  const FIXED_COMMENT = 'N/A';
   const FIXED_LABORATORY = 'CCE Data Communication Laboratory';
   const COMMENT_CONTEXT = /comment|feedback|suggestion|remark|improv|better support/i;
+  const ORGANIZATION_CONTEXT = /\b(?:organi[sz]ations?|affiliations?|student clubs?|student associations?)\b/i;
   const BASE = '/feedback-form/';
   const SITE = 'umpass.umindanao.edu.ph';
   const knownSections = ['survey', 'course-assessment', 'evaluation'];
@@ -184,17 +185,21 @@
       if (!isVisible(container)) return null;
       const controls = [...container.querySelectorAll('button, input[type="radio"], [role="radio"]')]
         .filter(usable);
-      if (controls.length !== 3) return null;
+      if (controls.length < 3 || controls.length > 4) return null;
       const options = controls.map(element => {
         const label = normalize(element.getAttribute('aria-label') || element.getAttribute('title') ||
           labelText(element) || text(element));
         const answer = /^yes\b/i.test(label) ? 'yes' : /^no\b/i.test(label) ? 'no' :
-          /^not\s+sure\b/i.test(label) ? 'not-sure' : null;
+          /^not\s+sure\b/i.test(label) ? 'not-sure' :
+            /^(?:n\s*\/\s*a|not applicable)(?:\b|\s|$|[(:-])/i.test(label) ? 'na' : null;
         return { element, answer };
       });
-      if (new Set(options.map(option => option.answer)).size !== 3 ||
+      const answers = new Set(options.map(option => option.answer));
+      if (answers.size !== controls.length || !answers.has('yes') || !answers.has('no') ||
+          ![...answers].some(answer => answer === 'not-sure' || answer === 'na') ||
           options.some(option => !option.answer)) return null;
       return {
+        desired: isOrganizationQuestion(container) ? (answers.has('na') ? 'na' : 'no') : 'yes',
         answered: () => options.some(option => selected(option.element)),
         selectedAnswer: () => options.find(option => selected(option.element))?.answer || null,
         choose(answer) {
@@ -223,6 +228,15 @@
     const container = element.closest('fieldset, .survey-question, .question-card, .form-group');
     if (container) names.push(text(container.querySelector('legend, label, .question-title, .question-text')));
     return normalize(names.filter(Boolean).join(' ')).slice(0, 600);
+  }
+
+  function isOrganizationQuestion(element) {
+    const context = questionContext(element);
+    const card = element.closest(
+      'fieldset, [data-question-id], .survey-question, .question-item, .question-card, .v-card'
+    );
+    const nearby = card && text(card).length < 450 ? text(card) : '';
+    return ORGANIZATION_CONTEXT.test(`${context} ${nearby}`);
   }
 
   function fieldType(context) {
@@ -329,6 +343,32 @@
         COMMENT_CONTEXT.test(questionContext(textarea)));
   }
 
+  function organizationFields() {
+    return [...document.querySelectorAll('form input:not([type]), form input[type="text"], form textarea, form select')]
+      .filter(field => usable(field) && !field.readOnly &&
+        field.getAttribute('role') !== 'combobox' && !field.id?.endsWith('-sizer') &&
+        isOrganizationQuestion(field));
+  }
+
+  function organizationAnswer(field) {
+    if (field instanceof HTMLSelectElement) {
+      const option = [...field.options].find(item => !item.disabled &&
+        /^(?:n\s*\/\s*a|not applicable)(?:\s|$|[(:-])/i.test(normalize(text(item) || item.value)));
+      return option?.value ?? null;
+    }
+    return 'N/A';
+  }
+
+  function fillOrganizations() {
+    let filled = 0, review = 0;
+    for (const field of organizationFields()) {
+      const answer = organizationAnswer(field);
+      if (answer === null) { review++; continue; }
+      if (field.value !== answer) { setNativeValue(field, answer); filled++; }
+    }
+    return { filled, review };
+  }
+
   function fillComment(comment, overwrite) {
     const value = normalize(comment);
     if (!value) return 0;
@@ -403,9 +443,10 @@
 
     let choiceFilled = 0;
     for (const group of yesNoGroups()) {
-      if (group.selectedAnswer() !== 'yes' && group.choose('yes')) choiceFilled++;
+      if (group.selectedAnswer() !== group.desired && group.choose(group.desired)) choiceFilled++;
     }
 
+    const organization = fillOrganizations();
     let locationFilled = 0, locationReview = 0;
     for (const field of collectLocationFields(config)) {
       if (field.hasAnswer()) continue;
@@ -413,10 +454,11 @@
       else locationReview++;
     }
     const commentFilled = fillComment(FIXED_COMMENT, true);
-    const choiceReview = yesNoGroups().filter(group => group.selectedAnswer() !== 'yes').length;
+    const choiceReview = yesNoGroups().filter(group => group.selectedAnswer() !== group.desired).length;
     return {
       ok: true, total: groups.length, filled, existing, skippedRatings,
       locationFilled, locationReview, commentFilled, choiceFilled, choiceReview,
+      organizationFilled: organization.filled, organizationReview: organization.review,
       note: (groups.length || locationFilled)
         ? 'Review all answers and submit manually.'
         : 'No compatible rating questions found. Open an individual answer form.'
@@ -438,7 +480,8 @@
     if (!run) return null;
     return {
       active: run.active, phase: run.phase, section: knownSections[run.sectionIndex] || null,
-      processed: run.processed, skipped: run.skipped || 0, message: run.message
+      processed: run.processed, skipped: run.skipped || 0,
+      lastSkipped: run.lastSkipped || null, message: run.message
     };
   }
 
@@ -514,7 +557,7 @@
         const opensNewTab = /^(?:_blank|_new)$/i.test(link?.getAttribute('target') || '');
         const sameSiteUrl = url?.protocol === 'https:' && url.hostname === SITE &&
           url.pathname.startsWith(BASE) ? url.href : null;
-        return { element, key, sameSiteUrl, opensNewTab };
+        return { element, key, label, sameSiteUrl, opensNewTab };
       });
   }
 
@@ -593,13 +636,14 @@
   function advanceSection(run) {
     run.sectionIndex++;
     run.currentKey = null;
+    run.currentLabel = null;
     run.visited = [];
     run.phase = 'scan';
     run.phaseAt = Date.now();
     if (run.sectionIndex >= knownSections.length) {
       const skipped = run.skipped || 0;
       endRun(run, 'done', skipped
-        ? `Scan finished: ${run.processed} submitted; ${skipped} need manual review.`
+        ? `Scan finished: ${run.processed} submitted; ${skipped} need manual review. Last issue: ${run.lastSkipped?.reason || 'Unknown form issue'}`
         : `Finished ${run.processed} form${run.processed === 1 ? '' : 's'} across all three sections.`);
       return;
     }
@@ -619,6 +663,7 @@
       run.visited = [];
     }
     run.currentKey = null;
+    run.currentLabel = null;
     run.phase = 'scan';
     run.phaseAt = Date.now();
     run.message = `${run.processed} form${run.processed === 1 ? '' : 's'} submitted. Scanning for more…`;
@@ -629,6 +674,11 @@
 
   function skipEntry(run, reason) {
     if (!run.currentKey) { endRun(run, 'error', reason); return; }
+    run.lastSkipped = {
+      section: knownSections[run.sectionIndex],
+      form: run.currentLabel || document.title,
+      reason
+    };
     run.visited.push(run.currentKey);
     run.skipped = (run.skipped || 0) + 1;
     if (run.initialForm) {
@@ -639,6 +689,7 @@
       run.visited = [];
     }
     run.currentKey = null;
+    run.currentLabel = null;
     run.phase = 'scan';
     run.phaseAt = Date.now();
     run.message = `Skipped ${run.skipped} form${run.skipped === 1 ? '' : 's'}: ${reason} Continuing…`;
@@ -711,6 +762,7 @@
         return;
       }
       run.currentKey = next.key;
+      run.currentLabel = next.label || controlLabel(next.element);
       run.phase = 'opening';
       run.phaseAt = Date.now();
       run.message = `Opening an entry in ${knownSections[run.sectionIndex]}…`;
@@ -761,9 +813,13 @@
         skipEntry(run, `${result.locationReview} location answer${result.locationReview === 1 ? '' : 's'} need your input.`);
         return;
       }
+      if (result.organizationReview) {
+        skipEntry(run, `${result.organizationReview} organization answer${result.organizationReview === 1 ? '' : 's'} need your input.`);
+        return;
+      }
       if (result.choiceReview) {
         if (Date.now() - run.phaseAt < 2000) { schedule(QUICK_CHECK_MS); return; }
-        skipEntry(run, `${result.choiceReview} Yes answer${result.choiceReview === 1 ? '' : 's'} could not be verified.`);
+        skipEntry(run, `${result.choiceReview} choice answer${result.choiceReview === 1 ? '' : 's'} could not be verified.`);
         return;
       }
       run.phase = 'ready-submit';
@@ -805,9 +861,10 @@
 
     if (run.phase === 'ready-submit') {
       if (collectRatingGroups().some(group => !group.answered()) ||
-          yesNoGroups().some(group => group.selectedAnswer() !== 'yes') ||
+          yesNoGroups().some(group => group.selectedAnswer() !== group.desired) ||
           collectLocationFields(config).some(field => !field.hasAnswer()) ||
           commentFields().some(field => field.value !== FIXED_COMMENT) ||
+          organizationFields().some(field => field.value !== organizationAnswer(field)) ||
           missingRequiredFields().length ||
           [...document.querySelectorAll('form')].some(form => !form.checkValidity())) {
         if (Date.now() - run.phaseAt < 2000) { schedule(QUICK_CHECK_MS); return; }
@@ -819,9 +876,9 @@
         skipEntry(run, 'The answer form is no longer visible.');
         return;
       }
-      const button = actionButton(scope, /^(?:send\s+(?:answers?|assessment|evaluation)|submit(?:\s+(?:answers?|survey|assessment|evaluation))?|finish)$/i);
+      const button = actionButton(scope, /^(?:send\s+(?:answers?|assessment|evaluation|rating)|submit(?:\s+(?:answers?|survey|assessment|evaluation|rating))?|finish)$/i);
       if (!button) {
-        skipEntry(run, 'Could not identify one Send Answer, Send Assessment, or Submit button.');
+        skipEntry(run, 'Could not identify one Send or Submit button.');
         return;
       }
       run.phase = 'await-confirm';
@@ -840,7 +897,7 @@
         endRun(run, 'error', 'The confirmation dialog reports unanswered questions.');
         return;
       }
-      const confirm = dialog && actionButton(dialog, /^(?:confirm(?:\s*(?:&|and)\s*submit|\s+(?:assessment|evaluation|submission))?|yes(?:,?\s+(?:submit|send))(?:\s+(?:answers?|assessment|evaluation))?|submit(?:\s+(?:answers?|assessment|evaluation))?|send\s+(?:answers?|assessment|evaluation))$/i);
+      const confirm = dialog && actionButton(dialog, /^(?:confirm(?:\s*(?:&|and)\s*submit|\s+submit|\s+(?:assessment|evaluation|submission|rating))?|yes(?:,?\s+(?:submit|send))(?:\s+(?:answers?|assessment|evaluation|rating))?|submit(?:\s+(?:answers?|assessment|evaluation|rating))?|send\s+(?:answers?|assessment|evaluation|rating))$/i);
       if (confirm) {
         run.phase = 'await-result';
         run.phaseAt = Date.now();
@@ -885,6 +942,7 @@
         active: true, phase: startsOnForm ? 'filling' : 'scan',
         sectionIndex: startsOnForm ? formSection : 0,
         currentKey: startsOnForm ? `url:${location.href}` : null,
+        currentLabel: startsOnForm ? document.title : null,
         initialForm: startsOnForm,
         visited: [], processed: 0, skipped: 0, phaseAt: Date.now(),
         message: startsOnForm ? 'Filling the open form…' : 'Scanning Survey…'

@@ -16,7 +16,7 @@ function popupElement() {
 }
 
 async function openPopup({ tabUrl = 'https://umpass.umindanao.edu.ph/feedback-form/course-assessment',
-  receiverInitiallyPresent = false, scriptVersion = '1.3.10' } = {}) {
+  receiverInitiallyPresent = false, scriptVersion = '1.3.12' } = {}) {
   const ids = ['auto-fill', 'location-mode', 'start', 'stop', 'fill', 'status-indicator',
     'status-title', 'status-info', 'result'];
   const elements = Object.fromEntries(ids.map(id => [id, popupElement()]));
