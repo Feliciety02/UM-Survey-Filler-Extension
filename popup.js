@@ -8,20 +8,66 @@ const ui = {
 };
 const config = { autoFill: false, locationMode: 'smart' };
 let tabId = null;
+let tabUrl = '';
+let connectionError = '';
+const isFeedbackUrl = url => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && parsed.hostname === 'umpass.umindanao.edu.ph' &&
+      parsed.pathname.startsWith('/feedback-form/');
+  } catch { return false; }
+};
+
+async function selectActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  tabId = tab?.id ?? null;
+  tabUrl = tab?.url || '';
+}
 
 function show(message, isError = false) {
   ui.result.textContent = message;
   ui.result.classList.toggle('error', isError);
 }
 async function save() { await chrome.storage.local.set({ [STORAGE_KEY]: config }); }
-function send(type, options = {}) {
+function deliver(type, options) {
   return new Promise(resolve => {
-    if (tabId == null) return resolve(null);
+    if (tabId == null) return resolve({ response: null, error: 'No active tab' });
     chrome.tabs.sendMessage(tabId, { type, ...options }, response => {
-      resolve(chrome.runtime.lastError ? null : response);
+      resolve({ response, error: chrome.runtime.lastError?.message || '' });
     });
   });
 }
+async function injectContentScript() {
+  try {
+    let supported = isFeedbackUrl(tabUrl);
+    if (!supported && !tabUrl) {
+      const [probe] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => location.hostname === 'umpass.umindanao.edu.ph' &&
+          location.pathname.startsWith('/feedback-form/')
+      });
+      supported = probe?.result === true;
+    }
+    if (!supported) return false;
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+    return true;
+  } catch (error) {
+    connectionError = error?.message || 'Script injection failed';
+    return false;
+  }
+}
+async function send(type, options = {}) {
+  if (tabId == null) await selectActiveTab();
+  let result = await deliver(type, options);
+  connectionError = result.error;
+  if (!result.error) return result.response;
+  if (!/Receiving end does not exist|Could not establish connection/i.test(result.error)) return null;
+  if (!await injectContentScript()) return null;
+  result = await deliver(type, options);
+  connectionError = result.error;
+  return result.error ? null : result.response;
+}
+ui.start.disabled = true;
 async function refresh() {
   const state = await send('UM_PASS_INSPECT', { config });
   ui.indicator.classList.remove('ready');
@@ -30,8 +76,10 @@ async function refresh() {
   ui.stop.hidden = !running;
   ui.fill.disabled = running;
   if (!state?.ok || !state.supported) {
-    ui.title.textContent = 'Open a UM-PASS form';
-    ui.info.textContent = 'Select an available feedback form.';
+    ui.title.textContent = isFeedbackUrl(tabUrl) ? 'Could not connect to UM-PASS' : 'Open a UM-PASS form';
+    ui.info.textContent = isFeedbackUrl(tabUrl)
+      ? 'Refresh this tab or allow extension access to UM-PASS.'
+      : 'Select an available feedback form.';
     return;
   }
   if (running) {
@@ -66,9 +114,9 @@ async function init() {
   config.locationMode = ['smart','off','cce','gym'].includes(config.locationMode) ? config.locationMode : 'smart';
   ui.autoFill.checked = !!config.autoFill;
   ui.locationMode.value = config.locationMode;
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.url?.startsWith('https://umpass.umindanao.edu.ph/feedback-form/')) tabId = tab.id;
+  await selectActiveTab();
   await refresh();
+  ui.start.disabled = false;
 }
 ui.autoFill.addEventListener('change', async () => {
   config.autoFill = ui.autoFill.checked;
@@ -85,7 +133,9 @@ ui.start.addEventListener('click', async () => {
   try {
     await save();
     const response = await send('UM_PASS_START');
-    if (!response?.ok) show(response?.error || 'Could not start on this tab.', true);
+    if (!response?.ok) show(response?.error ||
+      (connectionError ? 'Could not connect to this tab. Refresh it or allow extension access to UM-PASS.'
+        : 'Open a UM-PASS feedback page before starting.'), true);
     else show('Started. Keep this tab open; reopen the extension to check progress or stop.');
     await refresh();
   } catch {

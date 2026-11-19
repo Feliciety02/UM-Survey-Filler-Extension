@@ -12,7 +12,7 @@
     <header class="header">
       <img class="logo" src="icons/icon-48.png" width="39" height="39" alt="" aria-hidden="true">
       <div class="header-copy"><div class="eyebrow">UM-PASS</div><h1>Survey Filler</h1></div>
-      <span class="version">v1.3</span>
+      <span class="version">v1.3.2</span>
     </header>
     <section class="status" aria-live="polite">
       <span id="status-indicator" class="status-dot"></span>
@@ -22,7 +22,7 @@
       <div class="section-heading"><label>Rating pattern</label><span class="small-muted">Balanced random mix</span></div>
       <div class="pattern" aria-label="Only ratings 4 and 5"><span class="pale">5</span><span>4</span><span>5</span><span class="pale">4</span><span>5</span><span class="pattern-caption">Shuffle each form</span></div>
       <p class="hint">Only 4s and 5s · randomized order, without long repeated streaks.</p>
-      <div class="setting"><div><label for="auto-fill">Auto-fill new forms</label><p>Fill compatible questions when a form opens.</p></div>
+      <div class="setting"><div><label for="auto-fill">Auto-fill new forms</label><p>Fill ratings and set comments to None when a form opens.</p></div>
         <label class="switch"><input id="auto-fill" type="checkbox" aria-label="Auto-fill new forms"><span class="switch-track"></span></label>
       </div>
       <div class="setting compact"><div><label for="location-mode">Location handling</label><p>Smart matches venues. Select CCE to fill college.</p></div>
@@ -30,14 +30,10 @@
           <option value="smart">Smart</option><option value="off">Skip</option><option value="cce">Prefer CCE</option><option value="gym">Prefer Gym</option>
         </select>
       </div>
-      <div class="lab-setting"><label for="lab-choice">Preferred laboratory</label>
-        <input id="lab-choice" type="text" placeholder="Exact laboratory name, if needed" autocomplete="off">
-        <p>Used only when a Laboratory dropdown is blank.</p>
+      <div class="lab-setting"><strong>Laboratory dropdown</strong>
+        <p>Always CCE Data Communication Laboratory</p>
       </div>
-      <details class="details"><summary>Comment or improvement answer <span aria-hidden="true">+</span></summary>
-        <textarea id="comment" rows="3" maxlength="350" placeholder="Your own comment or suggestion…"></textarea>
-        <p>Used in labeled comment or improvement fields. Some forms require one.</p>
-      </details>
+      <div class="lab-setting"><strong>Comments and improvements</strong><p>Always “None”</p></div>
       <button id="start" class="primary" type="button">Start all sections <span aria-hidden="true">→</span></button>
       <button id="stop" class="secondary" type="button" hidden>Stop automation</button>
       <button id="fill" class="secondary" type="button">Fill current form only</button>
@@ -49,7 +45,7 @@
         <button data-nav="evaluation" type="button">Performance</button>
       </nav>
     </main>
-    <footer>Start can submit answers. Use ratings and locations that reflect your evaluation.</footer>
+    <footer>Start can submit answers. It replaces laboratory and comment answers with the fixed values above.</footer>
   </div>
   <script src="popup.js"></script>
 </body>

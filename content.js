@@ -1,4 +1,4 @@
-/* UM-PASS Survey Filler 1.3.1
+/* UM-PASS Survey Filler 1.3.2
  * Works only on the page the user is viewing. Uses native UI events and
  * visible form controls. Unknown answers stop the automatic run.
  */

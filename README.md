@@ -6,7 +6,7 @@
 
 <p align="center">A local-only Chrome and Edge extension that fills supported <a href="https://umpass.umindanao.edu.ph/feedback-form/">UM-PASS</a> surveys and evaluations. Its Start button scans available entries across the three feedback sections, then sends and confirms each recognized form.</p>
 
-<p align="center"><code>Version 1.3.1</code> &nbsp; <code>Chrome · Edge · Manifest V3</code> &nbsp; <code>Vanilla JavaScript</code> &nbsp; <code>Runs locally</code></p>
+<p align="center"><code>Version 1.3.2</code> &nbsp; <code>Chrome · Edge · Manifest V3</code> &nbsp; <code>Vanilla JavaScript</code> &nbsp; <code>Runs locally</code></p>
 
 <p align="center">
   <a href="#install-or-update"><img src="docs/install-button.svg" width="216" alt="Install guide"></a>
@@ -40,6 +40,8 @@
 4. Click **Load unpacked** and select the extracted `um-pass-survey-filler` directory containing `manifest.json`.
 5. Open any UM-PASS feedback section. Choose a location mode if needed, then click **Start all sections** and keep the tab open. The runner selects **CCE Data Communication Laboratory** in Laboratory dropdowns and writes **None** in comment or improvement fields. Reopen the extension to see progress or click **Stop automation**.
 6. For manual use, open an individual form and click **Fill current form only**. Check the answers and submit it yourself.
+
+If the popup cannot connect after an extension update, reload the unpacked extension and reopen the popup. Version 1.3.2 can inject its page script into an already open UM-PASS tab; if Brave blocks that, allow the extension to access `umpass.umindanao.edu.ph` and refresh the tab.
 
 ## Supports
 
