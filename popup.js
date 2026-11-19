@@ -1,11 +1,12 @@
 const STORAGE_KEY = 'umpassSurveyFiller';
 const $ = id => document.getElementById(id);
 const ui = {
-  autoFill: $('auto-fill'), locationMode: $('location-mode'), comment: $('comment'),
-  fill: $('fill'), indicator: $('status-indicator'), title: $('status-title'),
+  autoFill: $('auto-fill'), locationMode: $('location-mode'),
+  start: $('start'), stop: $('stop'), fill: $('fill'),
+  indicator: $('status-indicator'), title: $('status-title'),
   info: $('status-info'), result: $('result')
 };
-const config = { autoFill: false, locationMode: 'smart', comment: '' };
+const config = { autoFill: false, locationMode: 'smart' };
 let tabId = null;
 
 function show(message, isError = false) {
@@ -24,11 +25,22 @@ function send(type, options = {}) {
 async function refresh() {
   const state = await send('UM_PASS_INSPECT', { config });
   ui.indicator.classList.remove('ready');
+  const running = !!state?.automation?.active;
+  ui.start.hidden = running;
+  ui.stop.hidden = !running;
+  ui.fill.disabled = running;
   if (!state?.ok || !state.supported) {
     ui.title.textContent = 'Open a UM-PASS form';
     ui.info.textContent = 'Select an available feedback form.';
     return;
   }
+  if (running) {
+    ui.title.textContent = `Running ${state.automation.section || 'UM-PASS'}`;
+    ui.info.textContent = state.automation.message;
+    ui.indicator.classList.add('ready');
+    return;
+  }
+  if (state.automation?.message) show(state.automation.message, state.automation.phase === 'error');
   if (state.isList) {
     ui.title.textContent = `${state.section} — listing page`;
     ui.info.textContent = 'Open an available Answer Survey / Evaluation first.';
@@ -48,11 +60,12 @@ async function refresh() {
 async function init() {
   const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] || {};
   Object.assign(config, stored);
-  // Older v1.0 saved rating is deliberately ignored; v1.2 always mixes 4 / 5.
+  delete config.labChoice;
+  delete config.comment;
+  // Older v1.0 saved rating is deliberately ignored; current versions mix 4 / 5.
   config.locationMode = ['smart','off','cce','gym'].includes(config.locationMode) ? config.locationMode : 'smart';
   ui.autoFill.checked = !!config.autoFill;
   ui.locationMode.value = config.locationMode;
-  ui.comment.value = config.comment || '';
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.url?.startsWith('https://umpass.umindanao.edu.ph/feedback-form/')) tabId = tab.id;
   await refresh();
@@ -67,31 +80,44 @@ ui.locationMode.addEventListener('change', async () => {
   await save(); await refresh();
   show(config.locationMode === 'smart' ? 'Smart location matching is on.' : 'Location preference saved.');
 });
-let commentTimer;
-ui.comment.addEventListener('input', () => {
-  config.comment = ui.comment.value;
-  clearTimeout(commentTimer);
-  commentTimer = setTimeout(save, 250);
+ui.start.addEventListener('click', async () => {
+  ui.start.disabled = true;
+  try {
+    await save();
+    const response = await send('UM_PASS_START');
+    if (!response?.ok) show(response?.error || 'Could not start on this tab.', true);
+    else show('Started. Keep this tab open; reopen the extension to check progress or stop.');
+    await refresh();
+  } catch {
+    show('Could not save settings or start automation.', true);
+  } finally {
+    ui.start.disabled = false;
+  }
+});
+ui.stop.addEventListener('click', async () => {
+  const response = await send('UM_PASS_STOP');
+  if (!response?.ok) show('Could not stop this tab. Close it to halt the run.', true);
+  else await refresh();
 });
 ui.fill.addEventListener('click', async () => {
   if (tabId === null) { show('Open an individual form on UM-PASS first.', true); return; }
   ui.fill.disabled = true;
   ui.fill.textContent = 'Filling…';
-  config.comment = ui.comment.value;
   await save();
   const response = await send('UM_PASS_FILL', { config, overwrite: false, fresh: false });
   if (!response) show('Could not connect to the form. Refresh the page and try again.', true);
   else if (!response.ok) show(response.error || 'Unable to fill this page.', true);
-  else if (!response.filled && !response.locationFilled && !response.commentFilled) show(response.note || 'No unanswered matching fields found.');
+  else if (!response.filled && !response.locationFilled && !response.commentFilled && !response.labPending) show(response.note || 'No unanswered matching fields found.');
   else {
     const parts = [`${response.filled || 0} ratings`];
     if (response.locationFilled) parts.push(`${response.locationFilled} location${response.locationFilled === 1 ? '' : 's'}`);
     if (response.locationReview) parts.push(`${response.locationReview} locations to review`);
     if (response.existing) parts.push(`${response.existing} unchanged`);
-    if (response.commentFilled) parts.push('comment added');
+    if (response.commentFilled) parts.push(`${response.commentFilled} comment${response.commentFilled === 1 ? '' : 's'} set to None`);
+    if (response.labPending) parts.push('selecting CCE Data Communication Laboratory');
     show(`Filled ${parts.join(' · ')}. Review before submitting.`);
   }
-  ui.fill.textContent = 'Fill unanswered questions →';
+  ui.fill.textContent = 'Fill current form only';
   ui.fill.disabled = false;
   await refresh();
 });
