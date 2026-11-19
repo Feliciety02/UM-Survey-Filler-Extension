@@ -6,7 +6,7 @@
 
 <p align="center">A local-only Chrome and Edge extension that fills supported <a href="https://umpass.umindanao.edu.ph/feedback-form/">UM-PASS</a> surveys and evaluations. Its Start button scans available entries across the three feedback sections, then sends and confirms each recognized form.</p>
 
-<p align="center"><code>Version 1.3.3</code> &nbsp; <code>Chrome · Edge · Manifest V3</code> &nbsp; <code>Vanilla JavaScript</code> &nbsp; <code>Runs locally</code></p>
+<p align="center"><code>Version 1.3.4</code> &nbsp; <code>Chrome · Edge · Manifest V3</code> &nbsp; <code>Vanilla JavaScript</code> &nbsp; <code>Runs locally</code></p>
 
 <p align="center">
   <a href="#install-or-update"><img src="docs/install-button.svg" width="216" alt="Install guide"></a>
@@ -41,7 +41,7 @@
 5. Open any UM-PASS feedback section and click **Start all sections**. Keep the tab open while it scans Survey, Course, and Performance. The popup shows the fixed answers before you start: **CCE Data Communication Laboratory** and **None** for comments. Reopen the extension to see progress or click **Stop automation**.
 6. For location preferences, auto-fill, manual filling, or section links, expand **Options and manual tools**. For manual use, open an individual form and click **Fill current form only**, then check the answers and submit it yourself.
 
-If the popup cannot connect after an extension update, reload the unpacked extension and reopen the popup. Version 1.3.3 can inject its page script into an already open UM-PASS tab; if Brave blocks that, allow the extension to access `umpass.umindanao.edu.ph` and refresh the tab.
+If the popup cannot connect after an extension update, reload the unpacked extension and reopen the popup. Version 1.3.4 can inject its page script into an already open UM-PASS tab; if Brave blocks that, allow the extension to access `umpass.umindanao.edu.ph` and refresh the tab.
 
 ## Supports
 
@@ -54,6 +54,7 @@ If the popup cannot connect after an extension update, reload the unpacked exten
 - Vuetify Laboratory dropdowns are set to **CCE Data Communication Laboratory**, including when another laboratory is preselected.
 - Clearly designated comment and improvement text fields are set to **None**, including fields with existing text.
 - **Start all sections** scans visible Answer Survey / Evaluation / Course Assessment buttons, fills an individual form, clicks Send Answer or Submit, confirms in a recognized dialog, and continues to the next available entry and section. It stops if a required answer, button, or result cannot be verified.
+- The runner advances as soon as recognized controls appear and skips sections that already show only Completed or Locked entries.
 - **Auto-fill** fills newly opened forms, sets comment or improvement fields to **None**, and selects **CCE Data Communication Laboratory** without submitting; **Fill current form only** does the same on the current form for manual review.
 - Quick-access buttons for Survey, Course Delivery, and Performance sections.
 

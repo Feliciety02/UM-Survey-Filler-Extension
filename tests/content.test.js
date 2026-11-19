@@ -137,7 +137,7 @@ test('college is left blank in Smart mode and filled only with Prefer CCE', () =
 function makeAutomationPage({
   hasConfirm = true, hasSuccess = true, entryCount = 2, autoFill = false,
   initialComment = 'Existing improvement', initialLaboratory = 'CCE Data Communication Laboratory',
-  laboratoryAvailable = true, dialogIncomplete = false
+  laboratoryAvailable = true, dialogIncomplete = false, listingStatus = 'Completed'
 } = {}) {
   const fixedLaboratory = 'CCE Data Communication Laboratory';
   let now = 10000;
@@ -213,6 +213,7 @@ function makeAutomationPage({
     ? 'You have answered 17 of 18 applicable questions.'
     : 'You have answered 18 of 18 applicable questions.';
   const notice = new Element({ text: 'Successfully submitted' });
+  const statusChip = new Element({ text: listingStatus });
   const document = {
     documentElement: new Element(), title: 'Test survey', readyState: 'complete',
     querySelectorAll(selector) {
@@ -224,6 +225,7 @@ function makeAutomationPage({
       if (selector === 'button, input[type="submit"], [role="button"]') return view === 'form' ? [sendButton] : [];
       if (selector.startsWith('dialog[open]')) return view === 'confirm' ? [dialog] : [];
       if (selector.startsWith('[role="alert"]')) return view === 'success' ? [notice] : [];
+      if (selector === '.v-chip__content, .status-chip, [data-status]') return view === 'list' ? [statusChip] : [];
       if (selector === '.v-select') return view === 'form' ? [labContainer] : [];
       if (selector === 'form textarea:not([readonly]):not([disabled])') return view === 'form' ? [improvement, generalComment] : [];
       if (selector.startsWith('form input:not([type="hidden"])')) return view === 'form' ? [labInput, improvement, generalComment] : [];
@@ -293,7 +295,7 @@ function makeAutomationPage({
 test('Start scans multiple Course Assessment entries and advances through all three sections', () => {
   const page = makeAutomationPage();
   assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
-  page.advance(60000);
+  page.advance(5000);
 
   const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
   assert.equal(state.phase, 'done');
@@ -301,6 +303,28 @@ test('Start scans multiple Course Assessment entries and advances through all th
   assert.equal(page.submitted, true);
   assert.equal(page.sendClicks, 2);
   assert.equal(page.confirmClicks, 2);
+});
+
+test('completed-only listings advance quickly without opening a form', () => {
+  const page = makeAutomationPage({ entryCount: 0 });
+  assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
+  page.advance(2000);
+
+  const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
+  assert.equal(state.phase, 'done');
+  assert.equal(state.processed, 0);
+  assert.equal(page.sendClicks, 0);
+});
+
+test('a Pending listing without an answer button stops instead of skipping', () => {
+  const page = makeAutomationPage({ entryCount: 0, listingStatus: 'Pending' });
+  assert.equal(page.send({ type: 'UM_PASS_START' }).ok, true);
+  page.advance(7000);
+
+  const state = page.send({ type: 'UM_PASS_INSPECT' }).automation;
+  assert.equal(state.phase, 'error');
+  assert.match(state.message, /Pending entries exist/);
+  assert.equal(page.sendClicks, 0);
 });
 
 test('automation stops when Send Answer has no confirmation', () => {

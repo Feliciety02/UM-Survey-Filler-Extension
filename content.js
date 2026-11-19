@@ -1,4 +1,4 @@
-/* UM-PASS Survey Filler 1.3.2
+/* UM-PASS Survey Filler 1.3.4
  * Works only on the page the user is viewing. Uses native UI events and
  * visible form controls. Unknown answers stop the automatic run.
  */
@@ -14,6 +14,8 @@
   const plans = new Map();
   const SITE = 'umpass.umindanao.edu.ph';
   const knownSections = ['survey', 'course-assessment', 'evaluation'];
+  const QUICK_CHECK_MS = 150;
+  const LIST_SETTLE_MS = 300;
   const SCORE_LABELS = [
     [/\bstrongly\s+agree\b|\bvery\s+satisfied\b|\bexcellent\b|\boutstanding\b|\balways\b|\bextremely\s+(?:likely|satisfied)\b/i, 5],
     [/\bagree\b|\bsatisfied\b|\bvery\s+good\b|\boften\b|\blikely\b/i, 4],
@@ -531,7 +533,7 @@
     run.message = `Scanning ${knownSections[run.sectionIndex]}…`;
     writeRun(run);
     location.assign(listPath(run.sectionIndex));
-    schedule(700);
+    schedule(500);
   }
 
   function markComplete(run) {
@@ -543,7 +545,7 @@
     run.message = `${run.processed} form${run.processed === 1 ? '' : 's'} submitted. Scanning for more…`;
     writeRun(run);
     if (!onList(run.sectionIndex)) location.assign(listPath(run.sectionIndex));
-    schedule(700);
+    schedule(500);
   }
 
   function runAutomation(config) {
@@ -558,11 +560,11 @@
     if (run.phase === 'scan') {
       if (!onList(run.sectionIndex)) {
         location.assign(listPath(run.sectionIndex));
-        schedule(700);
+        schedule(500);
         return;
       }
-      if (document.readyState === 'loading' || Date.now() - run.phaseAt < 1500) {
-        schedule(1000); return;
+      if (document.readyState === 'loading' || Date.now() - run.phaseAt < LIST_SETTLE_MS) {
+        schedule(QUICK_CHECK_MS); return;
       }
       const entries = answerEntries();
       if (entries.some(entry => !entry.key) || new Set(entries.map(entry => entry.key)).size !== entries.length) {
@@ -571,12 +573,17 @@
       }
       const next = entries.find(entry => !run.visited.includes(entry.key));
       if (!next) {
-        if (!entries.length && Date.now() - run.phaseAt < 6000) {
-          schedule(1000); return;
-        }
-        if (!entries.length && listingCounts().pending) {
+        const counts = entries.length ? null : listingCounts();
+        if (!entries.length && counts?.pending) {
+          if (Date.now() - run.phaseAt < 6000) {
+            schedule(QUICK_CHECK_MS); return;
+          }
           endRun(run, 'error', 'Pending entries exist, but no Answer Survey button was found.');
           return;
+        }
+        if (!entries.length && !counts.completed && !counts.locked &&
+            Date.now() - run.phaseAt < 6000) {
+          schedule(QUICK_CHECK_MS); return;
         }
         advanceSection(run);
         return;
@@ -587,7 +594,7 @@
       run.message = `Opening an entry in ${knownSections[run.sectionIndex]}…`;
       writeRun(run);
       next.element.click();
-      schedule(1000);
+      schedule(QUICK_CHECK_MS);
       return;
     }
 
@@ -599,7 +606,7 @@
         run.phaseAt = Date.now();
         writeRun(run);
         schedule(0);
-      } else if (Date.now() - run.phaseAt < 10000) schedule(700);
+      } else if (Date.now() - run.phaseAt < 10000) schedule(QUICK_CHECK_MS);
       else endRun(run, 'error', 'The selected entry did not open a recognized answer form.');
       return;
     }
@@ -617,7 +624,7 @@
         run.message = 'Choosing CCE Data Communication Laboratory…';
         writeRun(run);
         laboratory.input.click();
-        schedule(500);
+        schedule(QUICK_CHECK_MS);
         return;
       }
       const result = fill({ config, allowListForm: onList(run.sectionIndex) });
@@ -633,7 +640,7 @@
       run.phaseAt = Date.now();
       run.message = 'Checking answers before sending…';
       writeRun(run);
-      schedule(700);
+      schedule(QUICK_CHECK_MS);
       return;
     }
 
@@ -646,8 +653,8 @@
         run.phaseAt = Date.now();
         writeRun(run);
         option.click();
-        schedule(500);
-      } else if (Date.now() - run.phaseAt < 5000) schedule(500);
+        schedule(QUICK_CHECK_MS);
+      } else if (Date.now() - run.phaseAt < 5000) schedule(QUICK_CHECK_MS);
       else endRun(run, 'error', 'CCE Data Communication Laboratory was not found in the open dropdown.');
       return;
     }
@@ -660,8 +667,8 @@
         run.phase = 'filling';
         run.phaseAt = Date.now();
         writeRun(run);
-        schedule(400);
-      } else if (Date.now() - run.phaseAt < 5000) schedule(500);
+        schedule(QUICK_CHECK_MS);
+      } else if (Date.now() - run.phaseAt < 5000) schedule(QUICK_CHECK_MS);
       else endRun(run, 'error', 'The laboratory selection did not appear in the form.');
       return;
     }
@@ -672,6 +679,7 @@
           commentFields().some(field => field.value !== FIXED_COMMENT) ||
           missingRequiredFields().length ||
           [...document.querySelectorAll('form')].some(form => !form.checkValidity())) {
+        if (Date.now() - run.phaseAt < 2000) { schedule(QUICK_CHECK_MS); return; }
         endRun(run, 'error', 'The form still has unanswered or invalid fields. Review it before submitting.');
         return;
       }
@@ -690,7 +698,7 @@
       run.message = 'Sending answers and waiting for confirmation…';
       writeRun(run);
       button.click();
-      schedule(700);
+      schedule(QUICK_CHECK_MS);
       return;
     }
 
@@ -708,12 +716,12 @@
         run.message = 'Confirming submission…';
         writeRun(run);
         confirm.click();
-        schedule(800);
+        schedule(QUICK_CHECK_MS);
       } else if (successNotice() || onList(run.sectionIndex) && !answerEntries().some(entry => entry.key === run.currentKey)) {
         run.phase = 'await-result';
         writeRun(run);
         schedule(0);
-      } else if (Date.now() - run.phaseAt < 10000) schedule(700);
+      } else if (Date.now() - run.phaseAt < 10000) schedule(QUICK_CHECK_MS);
       else endRun(run, 'error', 'No confirmation button appeared after Send Answer.');
       return;
     }
@@ -725,7 +733,7 @@
           !answerEntries().some(entry => entry.key === run.currentKey)) {
         markComplete(run); return;
       }
-      if (Date.now() - run.phaseAt < 12000) schedule(800);
+      if (Date.now() - run.phaseAt < 12000) schedule(QUICK_CHECK_MS);
       else endRun(run, 'error', 'Submission could not be verified. No further forms were opened.');
     }
   }
@@ -756,8 +764,8 @@
 
   let timeout;
   let scheduledFor = Infinity;
-  function schedule(delay = 450) {
-    const wait = typeof delay === 'number' ? delay : 450;
+  function schedule(delay = QUICK_CHECK_MS) {
+    const wait = typeof delay === 'number' ? delay : QUICK_CHECK_MS;
     const due = Date.now() + wait;
     if (timeout && due >= scheduledFor) return;
     clearTimeout(timeout);
@@ -777,7 +785,9 @@
   }
   const observer = new MutationObserver(mutations => {
     if (mutations.some(mutation => mutation.type === 'childList' &&
-      (mutation.addedNodes.length || mutation.removedNodes.length))) schedule();
+      (mutation.addedNodes.length || mutation.removedNodes.length))) {
+      schedule(readRun()?.active ? QUICK_CHECK_MS : 450);
+    }
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   chrome.storage.onChanged.addListener((changes, area) => {
