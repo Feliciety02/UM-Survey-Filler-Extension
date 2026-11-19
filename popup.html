@@ -12,40 +12,44 @@
     <header class="header">
       <img class="logo" src="icons/icon-48.png" width="39" height="39" alt="" aria-hidden="true">
       <div class="header-copy"><div class="eyebrow">UM-PASS</div><h1>Survey Filler</h1></div>
-      <span class="version">v1.3.2</span>
+      <span class="version">v1.3.3</span>
     </header>
     <section class="status" aria-live="polite">
       <span id="status-indicator" class="status-dot"></span>
       <div><strong id="status-title">Checking page…</strong><p id="status-info">Looking for survey questions</p></div>
     </section>
     <main>
-      <div class="section-heading"><label>Rating pattern</label><span class="small-muted">Balanced random mix</span></div>
-      <div class="pattern" aria-label="Only ratings 4 and 5"><span class="pale">5</span><span>4</span><span>5</span><span class="pale">4</span><span>5</span><span class="pattern-caption">Shuffle each form</span></div>
-      <p class="hint">Only 4s and 5s · randomized order, without long repeated streaks.</p>
-      <div class="setting"><div><label for="auto-fill">Auto-fill new forms</label><p>Fill ratings and set comments to None when a form opens.</p></div>
-        <label class="switch"><input id="auto-fill" type="checkbox" aria-label="Auto-fill new forms"><span class="switch-track"></span></label>
-      </div>
-      <div class="setting compact"><div><label for="location-mode">Location handling</label><p>Smart matches venues. Select CCE to fill college.</p></div>
-        <select id="location-mode" aria-label="Location handling">
-          <option value="smart">Smart</option><option value="off">Skip</option><option value="cce">Prefer CCE</option><option value="gym">Prefer Gym</option>
-        </select>
-      </div>
-      <div class="lab-setting"><strong>Laboratory dropdown</strong>
-        <p>Always CCE Data Communication Laboratory</p>
-      </div>
-      <div class="lab-setting"><strong>Comments and improvements</strong><p>Always “None”</p></div>
       <button id="start" class="primary" type="button">Start all sections <span aria-hidden="true">→</span></button>
-      <button id="stop" class="secondary" type="button" hidden>Stop automation</button>
-      <button id="fill" class="secondary" type="button">Fill current form only</button>
+      <button id="stop" class="secondary stop" type="button" hidden>Stop automation</button>
+      <p class="action-note">Scans and submits available forms in Survey, Course, then Performance.</p>
       <p class="result" id="result" aria-live="polite"></p>
-      <div class="jump-label">Quick access</div>
-      <nav class="links" aria-label="UM-PASS sections">
-        <button data-nav="survey" type="button">Surveys</button>
-        <button data-nav="course-assessment" type="button">Course</button>
-        <button data-nav="evaluation" type="button">Performance</button>
-      </nav>
+
+      <section class="answer-summary" aria-label="Answers used">
+        <strong class="summary-title">Answers used</strong>
+        <div class="answer-row"><span>Ratings</span><strong>Random 4s and 5s</strong></div>
+        <div class="answer-row"><span>Laboratory</span><strong>CCE Data Communication Laboratory</strong></div>
+        <div class="answer-row"><span>Comments</span><strong>None</strong></div>
+      </section>
+
+      <details class="options">
+        <summary>Options and manual tools <span aria-hidden="true">⌄</span></summary>
+        <div class="setting"><div><label for="auto-fill">Auto-fill new forms</label><p>Fill without submitting when a form opens.</p></div>
+          <label class="switch"><input id="auto-fill" type="checkbox" aria-label="Auto-fill new forms"><span class="switch-track"></span></label>
+        </div>
+        <div class="setting"><div><label for="location-mode">Other locations</label><p>Smart matches clear venue questions.</p></div>
+          <select id="location-mode" aria-label="Other locations">
+            <option value="smart">Smart</option><option value="off">Skip</option><option value="cce">Prefer CCE</option><option value="gym">Prefer Gym</option>
+          </select>
+        </div>
+        <button id="fill" class="secondary manual" type="button">Fill current form only</button>
+        <div class="jump-label">Open a section</div>
+        <nav class="links" aria-label="UM-PASS sections">
+          <button data-nav="survey" type="button">Survey</button>
+          <button data-nav="course-assessment" type="button">Course</button>
+          <button data-nav="evaluation" type="button">Performance</button>
+        </nav>
+      </details>
     </main>
-    <footer>Start can submit answers. It replaces laboratory and comment answers with the fixed values above.</footer>
   </div>
   <script src="popup.js"></script>
 </body>

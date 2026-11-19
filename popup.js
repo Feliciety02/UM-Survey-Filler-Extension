@@ -90,8 +90,9 @@ async function refresh() {
   }
   if (state.automation?.message) show(state.automation.message, state.automation.phase === 'error');
   if (state.isList) {
-    ui.title.textContent = `${state.section} — listing page`;
-    ui.info.textContent = 'Open an available Answer Survey / Evaluation first.';
+    ui.title.textContent = 'Ready to start';
+    ui.info.textContent = 'Start will scan Survey, Course, and Performance.';
+    ui.indicator.classList.add('ready');
     return;
   }
   if (!state.total && !state.locations) {
