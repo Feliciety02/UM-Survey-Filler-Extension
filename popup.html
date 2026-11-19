@@ -12,7 +12,7 @@
     <header class="header">
       <img class="logo" src="icons/icon-48.png" width="39" height="39" alt="" aria-hidden="true">
       <div class="header-copy"><div class="eyebrow">UM-PASS</div><h1>Survey Filler</h1></div>
-      <span class="version">v1.2.1</span>
+      <span class="version">v1.3</span>
     </header>
     <section class="status" aria-live="polite">
       <span id="status-indicator" class="status-dot"></span>
@@ -30,11 +30,17 @@
           <option value="smart">Smart</option><option value="off">Skip</option><option value="cce">Prefer CCE</option><option value="gym">Prefer Gym</option>
         </select>
       </div>
-      <details class="details"><summary>Optional comment <span aria-hidden="true">+</span></summary>
+      <div class="lab-setting"><label for="lab-choice">Preferred laboratory</label>
+        <input id="lab-choice" type="text" placeholder="Exact laboratory name, if needed" autocomplete="off">
+        <p>Used only when a Laboratory dropdown is blank.</p>
+      </div>
+      <details class="details"><summary>Comment or improvement answer <span aria-hidden="true">+</span></summary>
         <textarea id="comment" rows="3" maxlength="350" placeholder="Your own comment or suggestion…"></textarea>
-        <p>Used only in clearly labeled comment fields.</p>
+        <p>Used in labeled comment or improvement fields. Some forms require one.</p>
       </details>
-      <button id="fill" class="primary" type="button">Fill unanswered questions <span aria-hidden="true">→</span></button>
+      <button id="start" class="primary" type="button">Start all sections <span aria-hidden="true">→</span></button>
+      <button id="stop" class="secondary" type="button" hidden>Stop automation</button>
+      <button id="fill" class="secondary" type="button">Fill current form only</button>
       <p class="result" id="result" aria-live="polite"></p>
       <div class="jump-label">Quick access</div>
       <nav class="links" aria-label="UM-PASS sections">
@@ -43,7 +49,7 @@
         <button data-nav="evaluation" type="button">Performance</button>
       </nav>
     </main>
-    <footer>Review all answers before submitting. <strong>Never auto-submits.</strong></footer>
+    <footer>Start can submit answers. Use ratings and locations that reflect your evaluation.</footer>
   </div>
   <script src="popup.js"></script>
 </body>
