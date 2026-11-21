@@ -1,4 +1,4 @@
-/* UM-PASS Survey Filler 1.3.12
+/* UM Auto Survey Filler 1.3.12
  * Works only on the page the user is viewing. Uses native UI events and
  * visible form controls. Forms needing input are left for manual review.
  */

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "UM-PASS Survey Filler",
-  "short_name": "UM-PASS Filler",
+  "name": "UM Auto Survey Filler",
+  "short_name": "UM Auto Filler",
   "version": "1.3.12",
   "description": "Fill supported UM-PASS surveys and run a guided three-section answer workflow with checks before submission.",
   "permissions": [
@@ -13,7 +13,7 @@
     "https://umpass.umindanao.edu.ph/*"
   ],
   "action": {
-    "default_title": "UM-PASS Survey Filler",
+    "default_title": "UM Auto Survey Filler",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
