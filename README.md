@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/readme-banner.svg" width="1200" alt="UM-PASS Survey Filler clipboard logo and name, with an example 4 and 5 rating pattern">
+  <img src="docs/readme-banner.svg" width="1200" alt="UM Auto Survey Filler clipboard logo and name, with an example 4 and 5 rating pattern">
 </p>
 
-<h1 align="center">UM-PASS Survey Filler</h1>
+<h1 align="center">UM Auto Survey Filler</h1>
 
 <p align="center">A local-only Chrome and Edge extension that fills supported <a href="https://umpass.umindanao.edu.ph/feedback-form/">UM-PASS</a> surveys and evaluations. Its Start button scans available entries across the three feedback sections, then sends and confirms each recognized form.</p>
 
@@ -37,7 +37,7 @@
 1. Download or clone this repository (or extract its release ZIP).
 2. Open `chrome://extensions` (`edge://extensions` in Edge), and enable **Developer mode**.
 3. If you previously installed the extension, click **Remove** on the old copy (or replace the contents of the original unpacked folder, then press **Reload**).
-4. Click **Load unpacked** and select the extracted `um-pass-survey-filler` directory containing `manifest.json`.
+4. Click **Load unpacked** and select the extracted `um-auto-survey-filler` directory containing `manifest.json`.
 5. Open any UM-PASS feedback section or an individual answer form and click **Start all sections**. If an answer form is already open, Start handles it first, then scans Survey, Course, and Performance. Keep the tab open. The popup shows the fixed answers before you start: **CCE Data Communication Laboratory**, **N/A** for comments and organization names, and the rating pattern. Organization membership choices use **N/A** when offered or **No** otherwise. Reopen the extension to see progress or click **Stop automation**.
 6. For location preferences, auto-fill, manual filling, or section links, expand **Options and manual tools**. For manual use, open an individual form and click **Fill current form only**, then check the answers and submit it yourself.
 
