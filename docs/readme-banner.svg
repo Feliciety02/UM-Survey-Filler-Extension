@@ -28,9 +28,8 @@
     <path d="M110 74c1.6 8.4 4.6 11.4 13 13-8.4 1.6-11.4 4.6-13 13-1.6-8.4-4.6-11.4-13-13 8.4-1.6 11.4-4.6 13-13z" fill="#ffafbd" stroke="#810c24" stroke-width="4" stroke-linejoin="round" paint-order="stroke"/>
   </g>
   <g font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif">
-    <text x="267" y="134" font-size="14" font-weight="700" letter-spacing="2.5" fill="#8a8e98">UM AUTO</text>
-    <text x="264" y="190" font-size="60" font-weight="800" letter-spacing="-1.8" fill="#191b21">Survey Filler</text>
-    <text x="267" y="230" font-size="20" fill="#777b85">Pre-fill your UM-PASS forms. You review and submit.</text>
+    <text x="264" y="178" font-size="46" font-weight="800" letter-spacing="-1.4" fill="#191b21">UM Auto Survey Filler</text>
+    <text x="267" y="218" font-size="20" fill="#777b85">Pre-fill your UM-PASS forms. You review and submit.</text>
 
     <rect x="812" y="90" width="1" height="160" fill="#eaeaec"/>
     <text x="872" y="128" font-size="13" font-weight="600" letter-spacing="2" fill="#94a3b8">EXAMPLE RATINGS</text>
