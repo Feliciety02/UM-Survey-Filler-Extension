@@ -32,6 +32,14 @@
   </tr>
 </table>
 
+## Extension popup
+
+<p align="center">
+  <img src="docs/popup-ui.png" width="340" alt="UM Auto Survey Filler popup ready to start, with answer summary and expanded options">
+  <br>
+  <sub>Ready state with Options and manual tools expanded.</sub>
+</p>
+
 ## Install or update
 
 1. Download or clone this repository (or extract its release ZIP).
